@@ -29,12 +29,16 @@ function M.read_file(path)
 end
 
 function M.copy_if_missing(src, dst)
+	local dir = vim.fn.fnamemodify(dst, ":h")
+	if vim.fn.isdirectory(dir) == 0 then
+		vim.fn.mkdir(dir, "p")
+	end
 	if vim.fn.filereadable(dst) == 1 then
 		return true
 	end
 	local data = M.read_file(src)
 	if not data then
-		return false, "Source HTML not found: " .. src
+		return false, "Source not readable: " .. src
 	end
 	M.write_file(dst, data)
 	return true
