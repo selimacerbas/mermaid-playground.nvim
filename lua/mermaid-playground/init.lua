@@ -1,364 +1,212 @@
 local M = {}
 
--- Defaults -----------------------------------------------------------
-M.config = {
-	run_priority = "nvim", -- 'nvim' | 'web' | 'both'
-	select_block = "cursor", -- 'cursor' | 'first'
-	fallback_to_first = true, -- render first block if cursor detection fails
-	autoupdate_events = { "TextChanged", "TextChangedI", "InsertLeave" },
-	output = { file = "diagram.mmd", html = "index.html" },
-	mermaid = { theme = "dark", fit = "width", packs = { "logos" } },
-	live_server = { port = 5555 },
-	keymaps = { toggle = nil, render = nil, open = nil },
-
-	-- Workspace (keep repo clean by default)
-	workspace_mode = "temp", -- 'temp' | 'project'
-	workspace_dir = ".mermaid-playground",
-
-	-- Project root resolution
-	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
-	root_markers = { ".git", "package.json", "pyproject.toml" },
+local defaults = {
+    run_priority = "nvim", -- 'nvim' | 'web' | 'both'
+    select_block = "cursor", -- 'cursor' (current fence)
+    autoupdate_events = { "InsertLeave", "TextChanged", "TextChangedI" },
+    live_server = { port = 5555 },
+    mermaid = {
+        theme = "dark",  -- 'dark' | 'light'
+        fit = "width",   -- 'none' | 'width' | 'height'
+        packs = { "logos" }, -- icon packs to preload in viewer (Iconify)
+    },
 }
 
--- Utils --------------------------------------------------------------
-local function join(...)
-	return table.concat({ ... }, "/")
-end
-local function path_exists(p)
-	return vim.loop.fs_stat(p) ~= nil
-end
-local function ensure_dir(path)
-	if vim.fn.isdirectory(path) == 0 then
-		vim.fn.mkdir(path, "p")
-	end
-end
+local state = {
+    cfg = nil,
+    started = false,
+    proj_root = nil,
+    cache_root = nil,
+    link_path = nil, -- project_root/.mermaid-playground (symlink to cache)
+}
 
-local function buf_dir()
-	local name = vim.api.nvim_buf_get_name(0)
-	if name == "" then
-		return vim.fn.getcwd()
-	end
-	return vim.fn.fnamemodify(name, ":p:h")
+local function project_root()
+    -- Try to anchor in a project; otherwise use cwd
+    local root = vim.fs.root(0, { ".git", "package.json", ".hg", ".root" }) or vim.loop.cwd()
+    return root
 end
 
-local function has_marker(dir, markers)
-	for _, m in ipairs(markers or {}) do
-		if path_exists(dir .. "/" .. m) then
-			return true
-		end
-	end
-	return false
+local function sha1(s)
+    -- lightweight hash for cache folder names
+    return vim.fn.sha256(s):sub(1, 12)
 end
 
-local function find_ancestor(start, markers)
-	local dir = start
-	while dir and dir ~= "/" do
-		if has_marker(dir, markers) then
-			return dir
-		end
-		local parent = vim.fn.fnamemodify(dir, ":h")
-		if parent == dir then
-			break
-		end
-		dir = parent
-	end
-	return nil
+local function ensure_dirs()
+    state.proj_root = project_root()
+    local key = sha1(state.proj_root)
+    local base = vim.fn.stdpath("state") .. "/mermaid-playground/" .. key
+    state.cache_root = base
+    vim.fn.mkdir(base, "p")
+    -- write viewer if missing
+    if vim.fn.filereadable(base .. "/index.html") == 0 then
+        local viewer = require("mermaid-playground.viewer_html")
+        local f = assert(io.open(base .. "/index.html", "w"))
+        f:write(viewer)
+        f:close()
+    end
+    -- touch diagram file
+    if vim.fn.filereadable(base .. "/diagram.mmd") == 0 then
+        local f = assert(io.open(base .. "/diagram.mmd", "w"))
+        f:write("")
+        f:close()
+    end
+
+    -- Make a hidden symlink in project root so live-server can serve it
+    state.link_path = state.proj_root .. "/.mermaid-playground"
+    if vim.loop.fs_lstat(state.link_path) == nil then
+        pcall(vim.loop.fs_symlink, state.cache_root, state.link_path)
+    end
+
+    -- Hide from git without touching user .gitignore (use repo-local excludes)
+    if vim.loop.fs_lstat(state.proj_root .. "/.git") then
+        local excl = state.proj_root .. "/.git/info/exclude"
+        local exists = vim.fn.filereadable(excl) == 1 and vim.fn.readfile(excl) or {}
+        local found = false
+        for _, l in ipairs(exists) do
+            if l == ".mermaid-playground" then
+                found = true; break
+            end
+        end
+        if not found then
+            vim.fn.writefile(vim.list_extend(exists, { ".mermaid-playground" }), excl)
+        end
+    end
 end
 
-local function resolve_project_root()
-	local mode = M.config.root_mode or "auto"
-	if mode == "cwd" then
-		return vim.fn.getcwd()
-	end
-	if mode == "file" then
-		return buf_dir()
-	end
-	if mode == "git" then
-		return find_ancestor(buf_dir(), { ".git" }) or vim.fn.getcwd()
-	end
-	return find_ancestor(buf_dir(), M.config.root_markers) or buf_dir() or vim.fn.getcwd()
+local function write_file(path, content)
+    local f = assert(io.open(path, "w"))
+    f:write(content or "")
+    f:close()
 end
 
-local function slugify(p)
-	local s = (p or ""):gsub("[\\/:]+", "_"):gsub("[^%w_%-]", "_")
-	s = s:gsub("__+", "_")
-	return s
+local function system_open(url)
+    local sys = vim.loop.os_uname().sysname
+    if sys == "Darwin" then
+        vim.fn.jobstart({ "open", url }, { detach = true })
+    elseif sys:match("Windows") then
+        vim.fn.jobstart({ "cmd", "/c", "start", "", url }, { detach = true })
+    else
+        vim.fn.jobstart({ "xdg-open", url }, { detach = true })
+    end
 end
 
-local function workspace_dir()
-	if M.config.workspace_mode == "project" then
-		return join(resolve_project_root(), M.config.workspace_dir)
-	else
-		local state = vim.fn.stdpath("state") or vim.fn.stdpath("cache")
-		return join(state, "mermaid-playground", slugify(resolve_project_root()))
-	end
+local function prefers_dark()
+    local bg = vim.o.background
+    return (bg == "dark")
 end
 
-local function output_paths()
-	local dir = workspace_dir()
-	local file = join(dir, M.config.output.file)
-	local html = join(dir, M.config.output.html)
-	return dir, file, html
-end
-
-local function read_file(path)
-	local f = io.open(path, "r")
-	if not f then
-		return nil
-	end
-	local data = f:read("*a")
-	f:close()
-	return data
-end
-
-local function write_file(path, text)
-	ensure_dir(vim.fn.fnamemodify(path, ":h"))
-	local f = assert(io.open(path, "w"))
-	f:write(text or "")
-	f:close()
-end
-
-local function url_encode(s)
-	return (s:gsub("([^%w%-%_%.%~])", function(c)
-		return string.format("%%%02X", string.byte(c))
-	end))
-end
-
-local function plugin_root()
-	local matches = vim.api.nvim_get_runtime_file("lua/mermaid-playground/init.lua", false)
-	if matches and matches[1] then
-		return matches[1]:gsub("/lua/mermaid%-playground/init%.lua$", "")
-	end
-	return nil
-end
-
-local function ensure_viewer()
-	local asset_root = plugin_root()
-	local asset = asset_root and (asset_root .. "/assets/index.html") or nil
-	local dir, _, html = output_paths()
-	ensure_dir(dir)
-	if vim.fn.filereadable(html) == 0 then
-		if asset and vim.fn.filereadable(asset) == 1 then
-			write_file(html, assert(read_file(asset)))
-		else
-			write_file(html, "<!doctype html><title>Mermaid viewer missing</title>")
-		end
-	end
-end
-
-local function open_url(url)
-	local sys = vim.loop.os_uname().sysname
-	if sys == "Darwin" then
-		vim.fn.jobstart({ "open", url }, { detach = true })
-	elseif sys:match("Windows") then
-		vim.fn.jobstart({ "cmd", "/c", "start", "", url }, { detach = true })
-	else
-		vim.fn.jobstart({ "xdg-open", url }, { detach = true })
-	end
-end
-
--- Fence scanning ------------------------------------------------------
-local function fence_open(line)
-	-- Matches: ```mermaid, ``` mermaid, ```mermaid {init:...}, ~~~ mermaid, etc.
-	local fence, trailing = line:match("^%s*([`~]{3,})%s*(.-)%s*$")
-	if not fence then
-		return nil
-	end
-	local char = fence:sub(1, 1)
-	local len = #fence
-	local lang = nil
-	if trailing and #trailing > 0 then
-		lang = trailing:match("^([%w_%-%.]+)")
-		if lang then
-			lang = lang:lower()
-		end
-	end
-	return { char = char, len = len, lang = lang, raw = trailing or "" }
-end
-
-local function fence_close(line, char, len)
-	local fence = line:match("^%s*([`~]{3,})%s*$")
-	if not fence then
-		return false
-	end
-	if fence:sub(1, 1) ~= char then
-		return false
-	end
-	return #fence >= len -- closing can be >= opening length
-end
-
-local function find_all_mermaid_blocks(lines)
-	local blocks, i = {}, 1
-	while i <= #lines do
-		local fo = fence_open(lines[i] or "")
-		local is_mermaid = false
-		if fo then
-			if fo.lang == "mermaid" then
-				is_mermaid = true
-			elseif fo.raw and fo.raw:lower():match("^%s*mermaid[%s{]") then
-				is_mermaid = true
-			end
-		end
-		if fo and is_mermaid then
-			local start_i = i
-			i = i + 1
-			while i <= #lines and not fence_close(lines[i] or "", fo.char, fo.len) do
-				i = i + 1
-			end
-			local stop_i = math.min(i, #lines) -- inclusive
-			-- body is between fences; allow empty body (we still treat as a block)
-			local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
-			blocks[#blocks + 1] = { start = start_i, stop = stop_i, body = body }
-		else
-			i = i + 1
-		end
-	end
-	return blocks
-end
-
-local function block_at_cursor(blocks, cursor_lnum)
-	-- Inclusive: cursor on opening or closing fence counts as inside
-	for _, b in ipairs(blocks) do
-		if cursor_lnum >= b.start and cursor_lnum <= b.stop then
-			return b
-		end
-	end
-	return nil
-end
-
--- Core ---------------------------------------------------------------
-function M.render_current_block()
-	-- Read buffer unconditionally (no filetype gate)
-	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based line
-	local blocks = find_all_mermaid_blocks(lines)
-
-	local chosen
-	if M.config.select_block == "cursor" then
-		chosen = block_at_cursor(blocks, cur)
-		if not chosen and M.config.fallback_to_first then
-			chosen = blocks[1]
-		end
-	else
-		chosen = blocks[1]
-	end
-
-	if not chosen then
-		vim.notify("[mermaid-playground] No mermaid fenced block found (cursor or first).", vim.log.levels.INFO)
-		return
-	end
-
-	local dir, file = output_paths()
-	write_file(file, chosen.body or "")
-	vim.notify("[mermaid-playground] wrote " .. file, vim.log.levels.DEBUG)
-end
-
-local function ensure_server_started_with_root(root)
-	-- Force serving the workspace as root (stop any previous, chdir, start)
-	if vim.fn.exists(":LiveServerStop") == 2 then
-		vim.cmd("silent! LiveServerStop")
-	end
-	vim.cmd(("silent! execute 'cd %s'"):format(vim.fn.fnameescape(root)))
-	if vim.fn.exists(":LiveServerStart") == 2 then
-		vim.cmd(("silent! LiveServerStart %s"):format(vim.fn.fnameescape(root)))
-	else
-		vim.notify("[mermaid-playground] live-server.nvim not found. Please install it.", vim.log.levels.ERROR)
-	end
-end
-
+-- Build viewer URL
 function M.preview_url()
-	local packs = table.concat(M.config.mermaid.packs or {}, ",")
-	local base = ("http://localhost:%d/%s"):format(M.config.live_server.port, M.config.output.html)
-	if M.config.run_priority == "web" then
-		return ("%s?theme=%s&fit=%s&packs=%s"):format(base, M.config.mermaid.theme, M.config.mermaid.fit, packs)
-	else
-		local lock = (M.config.run_priority == "nvim") and "1" or "0"
-		return ("%s?src=%s&theme=%s&fit=%s&packs=%s&lock=%s"):format(
-			base,
-			url_encode(M.config.output.file),
-			M.config.mermaid.theme,
-			M.config.mermaid.fit,
-			packs,
-			lock
-		)
-	end
+    local port = M._cfg.live_server.port
+    local q = {
+        "theme=" .. (M._cfg.mermaid.theme or (prefers_dark() and "dark" or "light")),
+        "fit=" .. (M._cfg.mermaid.fit or "width"),
+        "packs=" .. table.concat(M._cfg.mermaid.packs or {}, ","),
+    }
+    return ("http://localhost:%d/.mermaid-playground/index.html?%s"):format(port, table.concat(q, "&"))
 end
 
+-- Live-server helpers
 function M.start()
-	local dir = workspace_dir()
-	ensure_viewer()
-	if M.config.run_priority ~= "web" then
-		M.render_current_block()
-	end
-	ensure_server_started_with_root(dir)
-	open_url(M.preview_url())
+    ensure_dirs()
+    -- start live-server if not running
+    vim.cmd("silent! LiveServerStart")
+    state.started = true
+    -- open the viewer
+    M.open()
 end
 
 function M.stop()
-	if vim.fn.exists(":LiveServerStop") == 2 then
-		vim.cmd("LiveServerStop")
-	end
+    vim.cmd("silent! LiveServerStop")
+    state.started = false
 end
 
--- Optional helpers for keymaps ---------------------------------------
-M._running = false
 function M.toggle()
-	M._running = not M._running
-	if M._running then
-		M.start()
-	else
-		M.stop()
-	end
+    if state.started then M.stop() else M.start() end
 end
 
 function M.open()
-	open_url(M.preview_url())
+    ensure_dirs()
+    system_open(M.preview_url())
 end
 
--- Setup / keymaps / autocommands ------------------------------------
-function M.setup(user)
-	M.config = vim.tbl_deep_extend("force", M.config, user or {})
+-- ===== Rendering =====
 
-	-- User commands
-	vim.api.nvim_create_user_command("MermaidPlaygroundStart", function()
-		M.start()
-	end, {})
-	vim.api.nvim_create_user_command("MermaidPlaygroundStop", function()
-		M.stop()
-	end, {})
-	vim.api.nvim_create_user_command("MermaidPlaygroundRender", function()
-		M.render_current_block()
-	end, {})
-	vim.api.nvim_create_user_command("MermaidPlaygroundOpen", function()
-		M.open()
-	end, {})
+local ts = require("mermaid-playground.ts")
 
-	-- Optional plugin-provided maps (off by default)
-	local km = M.config.keymaps or {}
-	if km.toggle then
-		vim.keymap.set("n", km.toggle, M.toggle, { desc = "Mermaid: toggle preview" })
-	end
-	if km.render then
-		vim.keymap.set("n", km.render, M.render_current_block, { desc = "Mermaid: render current block" })
-	end
-	if km.open then
-		vim.keymap.set("n", km.open, M.open, { desc = "Mermaid: open preview URL" })
-	end
+-- Extract mermaid fenced block under cursor
+local function get_mermaid_under_cursor()
+    local loc = ts.find_fence_under_cursor(0)
+    if not loc then return nil, "No fenced code block under cursor." end
+    local s, e, lang = loc[1], loc[2], loc[3]
+    if lang ~= "mermaid" then
+        return nil, ("Fenced block under cursor is '%s', not 'mermaid'."):format(lang ~= "" and lang or "unknown")
+    end
+    local lines = vim.api.nvim_buf_get_lines(0, s - 1, e, false)
+    -- Strip any leading indentation uniformly (helpful for indented MD)
+    local min_indent
+    for _, l in ipairs(lines) do
+        local sp = l:match("^(%s*)")
+        if sp then
+            min_indent = min_indent and math.min(min_indent, #sp) or #sp
+        end
+    end
+    if min_indent and min_indent > 0 then
+        for i, l in ipairs(lines) do lines[i] = l:sub(min_indent + 1) end
+    end
+    return table.concat(lines, "\n"), nil
+end
 
-	-- Auto-render only when NVim drives
-	if M.config.run_priority ~= "web" then
-		local grp = vim.api.nvim_create_augroup("MermaidPlaygroundAuto", { clear = true })
-		for _, ev in ipairs(M.config.autoupdate_events or {}) do
-			vim.api.nvim_create_autocmd(ev, {
-				group = grp,
-				pattern = { "*.md", "*.markdown", "*.mdx", "*.mmd", "*.mermaid" },
-				callback = function()
-					M.render_current_block()
-				end,
-				desc = "Mermaid Playground: render current diagram",
-			})
-		end
-	end
+-- Push code to the viewer’s diagram file
+function M.render()
+    ensure_dirs()
+    local text, err = get_mermaid_under_cursor()
+    if not text then
+        vim.notify(err, vim.log.levels.WARN, { title = "mermaid-playground" })
+        return
+    end
+    write_file(state.cache_root .. "/diagram.mmd", text)
+    vim.notify("Rendered current mermaid block.", vim.log.levels.INFO, { title = "mermaid-playground" })
+end
+
+-- ===== Setup & Commands =====
+
+M._cfg = defaults
+
+function M.setup(opts)
+    M._cfg = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+
+    -- user commands
+    vim.api.nvim_create_user_command("MermaidPlaygroundOpen", function() M.open() end, {})
+    vim.api.nvim_create_user_command("MermaidPlaygroundToggle", function() M.toggle() end, {})
+    vim.api.nvim_create_user_command("MermaidPlaygroundRender", function() M.render() end, {})
+
+    -- auto-updates
+    if M._cfg.autoupdate_events and #M._cfg.autoupdate_events > 0 then
+        vim.api.nvim_create_augroup("MermaidPlaygroundAuto", { clear = true })
+        vim.api.nvim_create_autocmd(M._cfg.autoupdate_events, {
+            group = "MermaidPlaygroundAuto",
+            pattern = { "*.md", "*.markdown", "*.mdx", "*.mmd" },
+            callback = function()
+                if state.started and (M._cfg.run_priority == "nvim" or M._cfg.run_priority == "both") then
+                    local ok = pcall(M.render)
+                    if not ok then
+                        -- silent fail is fine here
+                    end
+                end
+            end,
+            desc = "Auto-render Mermaid fenced block under cursor",
+        })
+    end
+end
+
+-- exported helpers (used by your keymaps)
+function M.preview_url_params()
+    return {
+        theme = M._cfg.mermaid.theme,
+        fit = M._cfg.mermaid.fit,
+        packs = M._cfg.mermaid.packs,
+    }
 end
 
 return M
