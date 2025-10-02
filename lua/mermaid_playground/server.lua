@@ -1,119 +1,125 @@
-local uv = vim.loop
+-- lua/mermaid_playground/server.lua
+local uv = vim.uv or vim.loop
 local util = require("mermaid_playground.util")
 
 local M = { _srv = nil, _port = nil, _root = nil }
 
-local function mime(p)
-	if p:match("%.html$") then
-		return "text/html; charset=utf-8"
-	end
-	if p:match("%.mmd$") then
-		return "text/plain; charset=utf-8"
-	end
-	if p:match("%.svg$") then
-		return "image/svg+xml"
-	end
-	if p:match("%.txt$") then
-		return "text/plain; charset=utf-8"
-	end
-	if p:match("%.ico$") then
-		return "image/x-icon"
-	end
-	return "application/octet-stream"
+local function mime_for(path)
+  if path:match("%.html$") then return "text/html; charset=utf-8" end
+  if path:match("%.mmd$")  then return "text/plain; charset=utf-8" end
+  if path:match("%.svg$")  then return "image/svg+xml" end
+  if path:match("%.txt$")  then return "text/plain; charset=utf-8" end
+  if path:match("%.ico$")  then return "image/x-icon" end
+  return "application/octet-stream"
 end
 
 local function send(sock, code, body, ctype)
-	local status = code == 200 and "OK" or "Not Found"
-	local hdr = table.concat({
-		("HTTP/1.1 %d %s"):format(code, status),
-		"Cache-Control: no-store",
-		"Content-Type: " .. (ctype or "text/plain"),
-		"Content-Length: " .. tostring(#body),
-		"",
-		"",
-	}, "\r\n")
-	sock:write(hdr .. body)
+  local status = (code == 200) and "OK" or (code == 404 and "Not Found" or "Error")
+  local hdr = table.concat({
+    ("HTTP/1.1 %d %s"):format(code, status),
+    "Cache-Control: no-store",
+    "Content-Type: " .. (ctype or "text/plain; charset=utf-8"),
+    "Content-Length: " .. tostring(#body),
+    "", ""
+  }, "\r\n")
+  sock:write(hdr .. body)
 end
 
-local function safe_join(root, req)
-	if req == "/" then
-		req = "/index.html"
-	end
-	if not req:match("^/[0-9A-Za-z%._%-%/]+$") then
-		return nil
-	end
-	return util.join(root, req:gsub("^/", ""))
+local function safe_path(root, req_path)
+  if req_path == "/" then req_path = "/index.html" end
+  -- very simple path allowlist to avoid directory traversal
+  if not req_path:match("^/[0-9A-Za-z%._%-%/]+$") then return nil end
+  return util.join(root, req_path:gsub("^/", ""))
 end
 
-local function handle(client, root)
-	local buf = ""
-	client:read_start(function(err, chunk)
-		if err then
-			return
-		end
-		if not chunk then
-			return
-		end
-		buf = buf + chunk
-	end)
-	client:read_start(function(err, chunk)
-		if err or not chunk then
-			return
-		end
-		buf = buf .. chunk
-		if buf:find("\r\n\r\n", 1, true) then
-			local method, path = buf:match("^(%u+)%s+([^%s]+)")
-			if method ~= "GET" then
-				send(client, 404, "")
-				client:close()
-				return
-			end
-			if path == "/health" then
-				send(client, 200, "ok", "text/plain")
-				client:close()
-				return
-			end
-			local full = safe_join(root, path)
-			if not full or vim.fn.filereadable(full) == 0 then
-				send(client, 404, "Not Found")
-				client:close()
-				return
-			end
-			local body = util.read_file(full) or ""
-			send(client, 200, body, mime(full))
-			client:close()
-		end
-	end)
+local function handle_client(client, root)
+  local buf = ""
+  client:read_start(function(err, chunk)
+    if err then
+      pcall(client.close, client)
+      return
+    end
+    if chunk then
+      buf = buf .. chunk
+      -- handle request once we have headers
+      if buf:find("\r\n\r\n", 1, true) then
+        local method, path = buf:match("^(%u+)%s+([^%s]+)")
+        if method ~= "GET" or not path then
+          send(client, 404, "Not Found")
+          client:shutdown(function() pcall(client.close, client) end)
+          return
+        end
+
+        if path == "/health" then
+          send(client, 200, "ok", "text/plain; charset=utf-8")
+          client:shutdown(function() pcall(client.close, client) end)
+          return
+        end
+
+        local full = safe_path(root, path)
+        if not full or vim.fn.filereadable(full) == 0 then
+          send(client, 404, "Not Found")
+          client:shutdown(function() pcall(client.close, client) end)
+          return
+        end
+
+        local body = util.read_file(full) or ""
+        send(client, 200, body, mime_for(full))
+        client:shutdown(function() pcall(client.close, client) end)
+      end
+    else
+      -- EOF
+      pcall(client.close, client)
+    end
+  end)
+end
+
+local function try_bind(host, port)
+  local srv = uv.new_tcp()
+  -- NOTE: no :setoption here — not available on some luv builds.
+  local ok, err = pcall(srv.bind, srv, host, port)
+  if not ok then
+    pcall(srv.close, srv)
+    return nil, err
+  end
+  return srv
+end
+
+function M.is_running()
+  return M._srv ~= nil
 end
 
 function M.ensure(root, port)
-	if M._srv and M._port == port and M._root == root then
-		return true
-	end
-	local srv = uv.new_tcp()
-	srv:setoption("reuseaddr", true)
-	local ok, err = srv:bind("127.0.0.1", port)
-	if not ok then
-		return true
-	end -- assume something already serves it
-	local ok2 = srv:listen(128, function()
-		local c = uv.new_tcp()
-		srv:accept(c)
-		handle(c, root)
-	end)
-	if not ok2 then
-		pcall(srv.close, srv)
-		return false
-	end
-	M._srv, M._port, M._root = srv, port, root
-	return true
+  -- If already serving same root/port, keep it.
+  if M._srv and M._port == port and M._root == root then return true end
+
+  local srv, err = try_bind("127.0.0.1", port)
+  if not srv then
+    -- Port is already taken; assume an external server is running (fine for our use).
+    M._srv, M._port, M._root = nil, port, root
+    return true
+  end
+
+  local ok, listen_err = pcall(srv.listen, srv, 128, function(listen_err2)
+    if listen_err2 then return end
+    local client = uv.new_tcp()
+    srv:accept(client)
+    handle_client(client, root)
+  end)
+  if not ok then
+    pcall(srv.close, srv)
+    return false, listen_err
+  end
+
+  M._srv, M._port, M._root = srv, port, root
+  return true
 end
 
 function M.shutdown()
-	if M._srv then
-		pcall(M._srv.close, M._srv)
-		M._srv = nil
-	end
+  if M._srv then
+    pcall(M._srv.close, M._srv)
+    M._srv = nil
+  end
 end
 
 return M
