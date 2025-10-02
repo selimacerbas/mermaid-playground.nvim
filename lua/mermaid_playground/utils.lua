@@ -77,45 +77,70 @@ function M.detect_icon_packs(src)
 	return names
 end
 
--- ===== Markdown fenced block extraction =====
+-- Robust: find fenced_code_block ancestor at cursor, then read info/content
 local function ts_node_text(node, bufnr)
 	return vim.treesitter.get_node_text(node, bufnr)
 end
 
--- Treesitter path: allow cursor on fences too
-function M.treesitter_mermaid_under_cursor()
-	local bufnr = 0
+local function parser_markdown(bufnr)
 	local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown")
 	if not ok or not parser then
-		ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown_inline")
-		if not ok or not parser then
-			return false
+		return nil
+	end
+	return parser
+end
+
+local function node_at_cursor_markdown(bufnr)
+	local row, col = unpack(vim.api.nvim_win_get_cursor(0)) -- 1-based row
+	row = row - 1
+	-- Neovim 0.10+: fast path
+	if vim.treesitter.get_node then
+		local ok, node = pcall(vim.treesitter.get_node, { bufnr = bufnr, pos = { row, col } })
+		if ok and node then
+			return node
 		end
+	end
+	-- 0.9 fallback
+	local parser = parser_markdown(bufnr)
+	if not parser then
+		return nil
 	end
 	local tree = parser:parse()[1]
 	if not tree then
-		return false
+		return nil
 	end
 	local root = tree:root()
+	return root and root:named_descendant_for_range(row, col, row, col) or nil
+end
 
-	local qstr = [[
-    (fenced_code_block (info_string) @info (code_fence_content) @content) @block
-    (fenced_code_block (info) @info (code_fence_content) @content) @block
-    (fenced_code_block (info_string) @info (raw_fence_content) @content) @block
-  ]]
-	local okq, query = pcall(vim.treesitter.query.parse, parser:lang(), qstr)
-	if not okq then
-		return false
+local function ascend_to(node, type_name)
+	while node do
+		if node:type() == type_name then
+			return node
+		end
+		node = node:parent()
 	end
+	return nil
+end
 
-	local row = vim.api.nvim_win_get_cursor(0)[1] - 1 -- 0-based
-	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
-		local block, info, content
+-- Query the block itself to get info + content regardless of grammar variants
+local function read_block_info_content(block, bufnr, lang)
+	lang = lang or "markdown"
+	local q = vim.treesitter.query.parse(
+		lang,
+		[[
+    (fenced_code_block
+      (info_string)? @info
+      (info)?         @info
+      (code_fence_content)? @content
+      (raw_fence_content)?  @content
+    ) @block
+  ]]
+	)
+	for _, match in q:iter_matches(block, bufnr, block:start(), block:end_()) do
+		local info, content
 		for id, node in pairs(match) do
-			local name = query.captures[id]
-			if name == "block" then
-				block = node
-			end
+			local name = q.captures[id]
 			if name == "info" then
 				info = node
 			end
@@ -123,43 +148,58 @@ function M.treesitter_mermaid_under_cursor()
 				content = node
 			end
 		end
-		if block and info and content then
-			local sr, _, er, _ = block:range()
-			if row >= sr and row <= er then -- <= inclusive: allow fence lines
-				local lang = (vim.treesitter.get_node_text(info, bufnr) or ""):gsub("^%s+", ""):gsub("%s+$", "")
-				lang = lang:lower()
-				if lang == "mermaid" or lang:match("%f[%w]mermaid%f[%W]") then
-					local txt = vim.treesitter.get_node_text(content, bufnr)
-					txt = txt:gsub("^%s+", ""):gsub("%s+$", "")
-					return true, txt
-				end
-			end
-		end
+		local info_text = info and ts_node_text(info, bufnr) or ""
+		local content_text = content and ts_node_text(content, bufnr) or ""
+		return info_text, content_text
 	end
-	return false
+	return "", ""
 end
 
--- Regex fallback: case-insensitive + Pandoc-style + allow fence line
+function M.treesitter_mermaid_under_cursor()
+	local bufnr = 0
+	local node = node_at_cursor_markdown(bufnr)
+	if not node then
+		return false
+	end
+	local block = ascend_to(node, "fenced_code_block")
+	if not block then
+		return false
+	end
+
+	local info_text, body = read_block_info_content(block, bufnr, "markdown")
+	local info = (info_text or ""):lower()
+	-- accept: ```mermaid, ``` mermaid, ```{.mermaid}, ```{class="mermaid"} ...
+	local is_mermaid = info:find("mermaid", 1, true) ~= nil
+	if not is_mermaid then
+		return false
+	end
+
+	body = (body or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	return #body > 0, body
+end
+
+-- Regex fallback (case-insensitive + Pandoc-style + allow cursor on fences)
 function M.regex_mermaid_under_cursor()
-	local row = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
+	local cur_row = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 
-	local function mermaid_fence(line)
-		-- capture fence (``` or ~~~) and the rest of the info string (anything)
+	local function fence_info(line)
 		local fence, rest = line:match("^%s*([`~]{3,})%s*(.*)$")
 		if not fence then
 			return nil, false
 		end
 		rest = rest or ""
+		local lower = rest:lower()
+		-- plain language or pandoc/attrs with mermaid inside
 		local lang = (rest:match("^([%w%._%-]+)") or ""):lower()
-		local is_mermaid = (lang == "mermaid") or rest:lower():match("{[^}]*mermaid[^}]*}")
-		return fence, is_mermaid
+		local ok = lang == "mermaid" or lower:match("{[^}]*mermaid[^}]*}")
+		return fence, ok
 	end
 
-	-- find opening mermaid fence at/above cursor
+	-- find the nearest opening fence at/above cursor that is mermaid
 	local open_row, open_fence
-	for i = row, 1, -1 do
-		local f, ok = mermaid_fence(lines[i] or "")
+	for i = cur_row, 1, -1 do
+		local f, ok = fence_info(lines[i] or "")
 		if f then
 			if ok then
 				open_row, open_fence = i, f
@@ -173,7 +213,7 @@ function M.regex_mermaid_under_cursor()
 		return false
 	end
 
-	-- find matching closing fence below
+	-- find its closing fence
 	local close_row
 	for i = open_row + 1, #lines do
 		if (lines[i] or ""):match("^%s*" .. vim.pesc(open_fence) .. "%s*$") then
@@ -185,13 +225,12 @@ function M.regex_mermaid_under_cursor()
 		return false
 	end
 
-	-- allow cursor on fence lines or inside
-	if row < open_row or row > close_row then
+	-- allow cursor on either fence or inside
+	if cur_row < open_row or cur_row > close_row then
 		return false
 	end
 
 	local body = table.concat(lines, "\n", open_row + 1, close_row - 1)
-	return true, body
+	body = body:gsub("^%s+", ""):gsub("%s+$", "")
+	return #body > 0, body
 end
-
-return M
