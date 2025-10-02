@@ -231,8 +231,8 @@
         function showError(e) {errorsEl.textContent = (e?.message || String(e)); errorsEl.classList.remove('hidden');}
         function clearError() {errorsEl.textContent = ''; errorsEl.classList.add('hidden');}
         function tokens(v) {return v.split(',').map(s => s.trim()).filter(Boolean);}
-        function detectPacks(src) {const re = /\b([a-z0-9-]+):[a-z0-9-]+\b/gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
-        function parseVB(svg) {const vb = svg.getAttribute('viewBox'); if (!vb) return null; const p = vb.trim().split(/\s+/).map(Number); return p.length === 4 ? {w: p[2], h: p[3]} : null;}
+        function detectPacks(src) {const re =\\b([a - z0 - 9 -] +): [a - z0 - 9 -] +\\b / gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
+        function parseVB(svg) {const vb = svg.getAttribute('viewBox'); if (!vb) return null; const p = vb.trim().split(/\\s+/).map(Number); return p.length === 4 ? {w: p[2], h: p[3]} : null;}
         function applyZoom() {const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return; svg.removeAttribute('style'); svg.setAttribute('width', String(Math.round(baseW * zoom))); svg.setAttribute('height', String(Math.round(baseH * zoom))); zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;}
         function computeFit() {const cw = panzoom.clientWidth || baseW; const ch = panzoom.clientHeight || baseH; if (fitMode === 'width') zoom = cw / baseW; else if (fitMode === 'height') zoom = ch / baseH; zoom = Math.min(8, Math.max(.1, zoom)); applyZoom();}
         function applyTheme(t) {mermaid.initialize({startOnLoad: false, theme: (t === 'dark' ? 'dark' : 'default'), securityLevel: 'strict'}); themeBtn.textContent = `Theme: ${t}`; document.body.dataset.theme = t;}

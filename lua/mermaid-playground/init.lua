@@ -15,12 +15,16 @@ M.config = {
 		fit = "width", -- 'none' | 'width' | 'height'
 		packs = { "logos" }, -- pre-load packs in viewer
 	},
-	live_server = { port = 5555 },
+	live_server = {
+		port = 5555,
+	},
 	keymaps = { toggle = nil, render = nil, open = nil },
 
-	-- Workspace placement (so your repo stays clean)
+	-- Workspace placement (keep repo clean by default)
 	workspace_mode = "temp", -- 'temp' | 'project'
 	workspace_dir = ".mermaid-playground", -- only used when workspace_mode='project'
+
+	-- Project root resolution
 	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
 	root_markers = { ".git", "package.json", "pyproject.toml" },
 }
@@ -106,81 +110,6 @@ local function output_paths()
 	return dir, file, html
 end
 
-local function read_buf_lines(bufnr)
-	bufnr = bufnr or 0
-	return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-end
-
-local function trim(s)
-	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
--- Find a mermaid fenced block (supports ``` or ~~~). Returns body and range.
-local function find_mermaid_block(lines, mode, cursor_lnum)
-	local function is_fence(line)
-		local sp, fence, lang = line:match("^(%s*)([`~]{3,})%s*([%w%-_]*)%s*$")
-		if not fence then
-			return nil
-		end
-		return sp or "", fence, lang:lower()
-	end
-
-	local function find_from(start_i)
-		for i = start_i, 1, -1 do
-			local _, fence, lang = is_fence(lines[i] or "")
-			if fence and lang == "mermaid" then
-				-- find closing matching fence
-				for j = i + 1, #lines do
-					local _, fence2, lang2 = is_fence(lines[j] or "")
-					if fence2 and (lang2 == "" or lang2 == nil) then
-						return i, j
-					end
-				end
-			end
-		end
-		return nil, nil
-	end
-
-	local start_i, stop_i
-	if mode == "cursor" and cursor_lnum then
-		start_i, stop_i = find_from(cursor_lnum)
-		if not start_i and not M.config.fallback_to_first then
-			return nil
-		end
-	end
-	if not start_i then
-		-- first mermaid block in file
-		for i = 1, #lines do
-			local _, fence, lang = is_fence(lines[i] or "")
-			if fence and lang == "mermaid" then
-				for j = i + 1, #lines do
-					local _, fence2, lang2 = is_fence(lines[j] or "")
-					if fence2 and (lang2 == "" or lang2 == nil) then
-						start_i, stop_i = i, j
-						break
-					end
-				end
-				if start_i then
-					break
-				end
-			end
-		end
-	end
-
-	if start_i and stop_i and stop_i > start_i + 1 then
-		local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
-		return body, start_i, stop_i
-	end
-	return nil
-end
-
-local function write_file(path, text)
-	ensure_dir(vim.fn.fnamemodify(path, ":h"))
-	local f = assert(io.open(path, "w"))
-	f:write(text or "")
-	f:close()
-end
-
 local function read_file(path)
 	local f = io.open(path, "r")
 	if not f then
@@ -189,6 +118,13 @@ local function read_file(path)
 	local data = f:read("*a")
 	f:close()
 	return data
+end
+
+local function write_file(path, text)
+	ensure_dir(vim.fn.fnamemodify(path, ":h"))
+	local f = assert(io.open(path, "w"))
+	f:write(text or "")
+	f:close()
 end
 
 local function url_encode(s)
@@ -230,6 +166,75 @@ local function open_url(url)
 	end
 end
 
+-- Fence scanning ------------------------------------------------------
+local function fence_open(line)
+	-- matches ```mermaid or ``` mermaid or ```mermaid {...}
+	local fence, info = line:match("^%s*([`~]{3,})%s*(.+)$")
+	if not fence then
+		fence = line:match("^%s*([`~]{3,})%s*$")
+		info = fence and "" or nil
+	end
+	if not fence then
+		return nil
+	end
+	local char = fence:sub(1, 1)
+	local len = #fence
+	local lang = nil
+	if info and #info > 0 then
+		lang = info:match("^%s*([%w%-%_]+)")
+		if lang then
+			lang = lang:lower()
+		end
+	end
+	return { char = char, len = len, lang = lang, info = info or "" }
+end
+
+local function fence_close(line, char, len)
+	local fence = line:match("^%s*([`~]{3,})%s*$")
+	if not fence then
+		return false
+	end
+	if fence:sub(1, 1) ~= char then
+		return false
+	end
+	if #fence < len then
+		return false
+	end -- closing can be >= opening length
+	return true
+end
+
+local function find_all_mermaid_blocks(lines)
+	local blocks = {}
+	local i = 1
+	while i <= #lines do
+		local fo = fence_open(lines[i] or "")
+		if fo and (fo.lang == "mermaid" or (fo.info and fo.info:lower():match("^%s*mermaid[%s{]"))) then
+			local start_i = i
+			i = i + 1
+			while i <= #lines and not fence_close(lines[i] or "", fo.char, fo.len) do
+				i = i + 1
+			end
+			local stop_i = i
+			if stop_i and stop_i > start_i then
+				local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
+				table.insert(blocks, { start = start_i, stop = stop_i, body = body })
+			end
+		else
+			i = i + 1
+		end
+	end
+	return blocks
+end
+
+local function block_under_cursor(blocks, cursor_lnum)
+	for _, b in ipairs(blocks) do
+		if cursor_lnum > b.start and cursor_lnum < b.stop then
+			return b
+		end
+	end
+	return nil
+end
+
 -- Core ---------------------------------------------------------------
 function M.render_current_block()
 	local buf = vim.api.nvim_get_current_buf()
@@ -238,21 +243,39 @@ function M.render_current_block()
 		vim.notify("[mermaid-playground] Not a Markdown/Mermaid buffer", vim.log.levels.WARN)
 		return
 	end
-	local lines = read_buf_lines(buf)
-	local cur = vim.api.nvim_win_get_cursor(0)[1]
-	local body = find_mermaid_block(lines, M.config.select_block, cur)
-	if not body or trim(body) == "" then
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
+	local blocks = find_all_mermaid_blocks(lines)
+	local chosen = nil
+
+	if M.config.select_block == "cursor" then
+		chosen = block_under_cursor(blocks, cur)
+		if not chosen and M.config.fallback_to_first then
+			chosen = blocks[1]
+		end
+	else
+		chosen = blocks[1]
+	end
+
+	if not chosen or not chosen.body or chosen.body:gsub("%s+", "") == "" then
 		vim.notify("[mermaid-playground] No mermaid block under cursor", vim.log.levels.INFO)
 		return
 	end
+
 	local dir, file = output_paths()
-	write_file(file, body)
+	write_file(file, chosen.body)
 	vim.notify("[mermaid-playground] wrote " .. file, vim.log.levels.DEBUG)
 end
 
-local function ensure_server_started()
+local function ensure_server_started_with_root(root)
+	-- Prefer starting with an explicit root argument; also chdir as a fallback.
+	if vim.fn.exists(":LiveServerStop") == 2 then
+		vim.cmd("LiveServerStop")
+	end
+	-- try LiveServerStart {root}; if not supported on your version, chdir still makes it work
+	vim.cmd(("silent! execute 'cd %s'"):format(vim.fn.fnameescape(root)))
 	if vim.fn.exists(":LiveServerStart") == 2 then
-		vim.cmd("LiveServerStart")
+		vim.cmd(("silent! LiveServerStart %s"):format(vim.fn.fnameescape(root)))
 	else
 		vim.notify("[mermaid-playground] live-server.nvim not found. Please install it.", vim.log.levels.ERROR)
 	end
@@ -278,14 +301,12 @@ end
 
 function M.start()
 	local dir = workspace_dir()
-	ensure_viewer() -- make sure index.html exists in workspace
+	ensure_viewer() -- ensure index.html exists in workspace
 	if M.config.run_priority ~= "web" then
-		M.render_current_block()
+		M.render_current_block() -- write diagram.mmd from the current buffer
 	end
-	-- Serve the WORKSPACE dir (not your repo root), so no repo pollution & correct paths
-	vim.fn.chdir(dir)
-	ensure_server_started()
-	open_url(M.preview_url())
+	ensure_server_started_with_root(dir) -- serve the workspace as root
+	open_url(M.preview_url()) -- open http://localhost:5555/index.html?...
 end
 
 function M.stop()
@@ -294,7 +315,7 @@ function M.stop()
 	end
 end
 
--- Optional helpers ---------------------------------------------------
+-- Optional helpers for keymaps ---------------------------------------
 M._running = false
 function M.toggle()
 	M._running = not M._running
