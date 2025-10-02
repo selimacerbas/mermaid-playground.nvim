@@ -18,25 +18,75 @@ M.config = {
 	live_server = {
 		port = 5555,
 	},
-	keymaps = {
-		toggle = "<leader>mp", -- start/open
-		render = "<leader>mr", -- force render
-		open = "<leader>mo", -- open URL
+	keymaps = { -- plugin-defined maps (you can disable and map in lazy `keys`)
+		toggle = nil, -- e.g. "<leader>mpp" to enable here
+		render = nil, -- e.g. "<leader>mpr"
+		open = nil, -- e.g. "<leader>mpo"
 	},
+	-- NEW: project root resolution (so live-server serves the right folder)
+	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
+	root_markers = { ".git", "package.json", "pyproject.toml" },
 }
 
 -- Utils --------------------------------------------------------------
 local function join(...)
 	return table.concat({ ... }, "/")
 end
+local function path_exists(p)
+	return vim.loop.fs_stat(p) ~= nil
+end
+
 local function ensure_dir(path)
 	if vim.fn.isdirectory(path) == 0 then
 		vim.fn.mkdir(path, "p")
 	end
 end
 
-local function project_root()
-	return vim.fn.getcwd()
+local function buf_dir()
+	local name = vim.api.nvim_buf_get_name(0)
+	if name == "" then
+		return vim.fn.getcwd()
+	end
+	return vim.fn.fnamemodify(name, ":p:h")
+end
+
+local function has_marker(dir, markers)
+	for _, m in ipairs(markers or {}) do
+		if path_exists(dir .. "/" .. m) then
+			return true
+		end
+	end
+	return false
+end
+
+local function find_ancestor(start, markers)
+	local dir = start
+	while dir and dir ~= "/" do
+		if has_marker(dir, markers) then
+			return dir
+		end
+		local parent = vim.fn.fnamemodify(dir, ":h")
+		if parent == dir then
+			break
+		end
+		dir = parent
+	end
+	return nil
+end
+
+local function resolve_root()
+	local mode = M.config.root_mode or "auto"
+	if mode == "cwd" then
+		return vim.fn.getcwd()
+	end
+	if mode == "file" then
+		return buf_dir()
+	end
+	if mode == "git" then
+		return find_ancestor(buf_dir(), { ".git" }) or vim.fn.getcwd()
+	end
+	-- auto
+	return find_ancestor(buf_dir(), M.config.root_markers) or buf_dir() or vim.fn.getcwd()
 end
 
 local function read_buf_lines(bufnr)
@@ -110,7 +160,7 @@ local function url_encode(s)
 	end))
 end
 
--- Find our own plugin root to copy the viewer asset ------------------
+-- Locate plugin root to copy viewer asset ----------------------------
 local function plugin_root()
 	local matches = vim.api.nvim_get_runtime_file("lua/mermaid-playground/init.lua", false)
 	if matches and matches[1] then
@@ -119,27 +169,26 @@ local function plugin_root()
 	return nil
 end
 
-local function ensure_viewer()
-	local root = plugin_root()
-	local asset = root and (root .. "/assets/index.html") or nil
-	local dir = join(project_root(), M.config.output.dir)
+local function output_paths()
+	local root = resolve_root()
+	local dir = join(root, M.config.output.dir)
+	local file = join(dir, M.config.output.file)
 	local html = join(dir, M.config.output.html)
+	return dir, file, html, root
+end
+
+local function ensure_viewer()
+	local root_dir = plugin_root()
+	local asset = root_dir and (root_dir .. "/assets/index.html") or nil
+	local dir, _, html = output_paths()
 	ensure_dir(dir)
 	if vim.fn.filereadable(html) == 0 then
 		if asset and vim.fn.filereadable(asset) == 1 then
 			write_file(html, assert(read_file(asset)))
 		else
-			-- final fallback (shouldn't happen): tiny placeholder
 			write_file(html, "<!doctype html><title>Mermaid viewer missing</title>")
 		end
 	end
-end
-
-local function output_paths()
-	local dir = join(project_root(), M.config.output.dir)
-	local file = join(dir, M.config.output.file)
-	local html = join(dir, M.config.output.html)
-	return dir, file, html
 end
 
 local function open_url(url)
@@ -175,7 +224,6 @@ function M.render_current_block()
 end
 
 local function ensure_server_started()
-	-- live-server.nvim exposes :LiveServerStart
 	if vim.fn.exists(":LiveServerStart") == 2 then
 		vim.cmd("LiveServerStart")
 	else
@@ -184,7 +232,7 @@ local function ensure_server_started()
 end
 
 function M.preview_url()
-	local dir, file = output_paths()
+	local dir, file, html = output_paths()
 	local packs = table.concat(M.config.mermaid.packs or {}, ",")
 	local base = ("http://localhost:%d/%s/%s"):format(
 		M.config.live_server.port,
@@ -210,6 +258,9 @@ function M.preview_url()
 end
 
 function M.start()
+	local _, _, _, root = output_paths()
+	-- ensure live-server serves the correct directory
+	vim.fn.chdir(root)
 	ensure_viewer()
 	if M.config.run_priority ~= "web" then
 		M.render_current_block()
@@ -224,11 +275,26 @@ function M.stop()
 	end
 end
 
+-- Optional helpers (so you can map without user commands) -----------
+M._running = false
+function M.toggle()
+	M._running = not M._running
+	if M._running then
+		M.start()
+	else
+		M.stop()
+	end
+end
+
+function M.open()
+	open_url(M.preview_url())
+end
+
 -- Setup / keymaps / autocommands ------------------------------------
 function M.setup(user)
 	M.config = vim.tbl_deep_extend("force", M.config, user or {})
 
-	-- Commands
+	-- User commands
 	vim.api.nvim_create_user_command("MermaidPlaygroundStart", function()
 		M.start()
 	end, {})
@@ -239,21 +305,19 @@ function M.setup(user)
 		M.render_current_block()
 	end, {})
 	vim.api.nvim_create_user_command("MermaidPlaygroundOpen", function()
-		open_url(M.preview_url())
+		M.open()
 	end, {})
 
-	-- Keymaps
-	local k = M.config.keymaps or {}
-	if k.toggle then
-		vim.keymap.set("n", k.toggle, M.start, { desc = "Mermaid Playground: start & open" })
+	-- Optional plugin-provided keymaps (disabled by default)
+	local km = M.config.keymaps or {}
+	if km.toggle then
+		vim.keymap.set("n", km.toggle, M.toggle, { desc = "Mermaid: toggle preview" })
 	end
-	if k.render then
-		vim.keymap.set("n", k.render, M.render_current_block, { desc = "Mermaid Playground: render" })
+	if km.render then
+		vim.keymap.set("n", km.render, M.render_current_block, { desc = "Mermaid: render current block" })
 	end
-	if k.open then
-		vim.keymap.set("n", k.open, function()
-			open_url(M.preview_url())
-		end, { desc = "Mermaid Playground: open URL" })
+	if km.open then
+		vim.keymap.set("n", km.open, M.open, { desc = "Mermaid: open preview URL" })
 	end
 
 	-- Autoupdate only when NVim writes the source file
