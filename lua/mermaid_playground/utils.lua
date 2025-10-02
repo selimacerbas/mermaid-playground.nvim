@@ -82,11 +82,11 @@ local function ts_node_text(node, bufnr)
 	return vim.treesitter.get_node_text(node, bufnr)
 end
 
+-- Treesitter path: allow cursor on fences too
 function M.treesitter_mermaid_under_cursor()
 	local bufnr = 0
 	local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown")
 	if not ok or not parser then
-		-- try markdown_inline
 		ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown_inline")
 		if not ok or not parser then
 			return false
@@ -108,21 +108,29 @@ function M.treesitter_mermaid_under_cursor()
 		return false
 	end
 
-	local row = vim.api.nvim_win_get_cursor(0)[1] - 1
-	for id, match, _ in query:iter_matches(root, bufnr, 0, -1) do
-	end -- noop (pre-iter)
+	local row = vim.api.nvim_win_get_cursor(0)[1] - 1 -- 0-based
 	for _, match, _ in query:iter_matches(root, bufnr, 0, -1) do
-		local block = match[query.captures[3] == "block" and 3 or #match]
-		local info = match[1]
-		local content = match[2]
+		local block, info, content
+		for id, node in pairs(match) do
+			local name = query.captures[id]
+			if name == "block" then
+				block = node
+			end
+			if name == "info" then
+				info = node
+			end
+			if name == "content" then
+				content = node
+			end
+		end
 		if block and info and content then
-			local sr, sc, er, ec = block:range()
-			if row > sr and row < er then
-				local lang = (ts_node_text(info, bufnr) or ""):gsub("^%s+", ""):gsub("%s+$", "")
-				if lang:match("^mermaid%f[%W]") or lang == "mermaid" then
-					local txt = ts_node_text(content, bufnr)
-					-- treesitter often includes a trailing newline
-					txt = txt:gsub("^\n+", ""):gsub("\n+$", "")
+			local sr, _, er, _ = block:range()
+			if row >= sr and row <= er then -- <= inclusive: allow fence lines
+				local lang = (vim.treesitter.get_node_text(info, bufnr) or ""):gsub("^%s+", ""):gsub("%s+$", "")
+				lang = lang:lower()
+				if lang == "mermaid" or lang:match("%f[%w]mermaid%f[%W]") then
+					local txt = vim.treesitter.get_node_text(content, bufnr)
+					txt = txt:gsub("^%s+", ""):gsub("%s+$", "")
 					return true, txt
 				end
 			end
@@ -131,39 +139,57 @@ function M.treesitter_mermaid_under_cursor()
 	return false
 end
 
+-- Regex fallback: case-insensitive + Pandoc-style + allow fence line
 function M.regex_mermaid_under_cursor()
-	local row = vim.api.nvim_win_get_cursor(0)[1]
+	local row = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-	local function is_fence(line)
-		local fence, lang = line:match("^%s*([`~]{3,})%s*([%w%-%_%.]*)")
-		return fence, lang
+
+	local function mermaid_fence(line)
+		-- capture fence (``` or ~~~) and the rest of the info string (anything)
+		local fence, rest = line:match("^%s*([`~]{3,})%s*(.*)$")
+		if not fence then
+			return nil, false
+		end
+		rest = rest or ""
+		local lang = (rest:match("^([%w%._%-]+)") or ""):lower()
+		local is_mermaid = (lang == "mermaid") or rest:lower():match("{[^}]*mermaid[^}]*}")
+		return fence, is_mermaid
 	end
-	-- find opening fence above or on cursor
-	local open_row, open_fence, open_lang
+
+	-- find opening mermaid fence at/above cursor
+	local open_row, open_fence
 	for i = row, 1, -1 do
-		local f, lang = is_fence(lines[i])
+		local f, ok = mermaid_fence(lines[i] or "")
 		if f then
-			open_row, open_fence, open_lang = i, f, lang
-			break
+			if ok then
+				open_row, open_fence = i, f
+				break
+			else
+				return false
+			end
 		end
 	end
-	if not open_row or (open_lang ~= "mermaid") then
+	if not open_row then
 		return false
 	end
-	-- find closing fence below
+
+	-- find matching closing fence below
 	local close_row
 	for i = open_row + 1, #lines do
-		local f2 = lines[i]:match("^%s*" .. vim.pesc(open_fence) .. "%s*$")
-		if f2 then
+		if (lines[i] or ""):match("^%s*" .. vim.pesc(open_fence) .. "%s*$") then
 			close_row = i
 			break
 		end
 	end
-	if not close_row or row <= open_row or row >= close_row then
+	if not close_row then
 		return false
 	end
-	local block = table.concat(lines, "\n", open_row, close_row)
-	-- strip fences
+
+	-- allow cursor on fence lines or inside
+	if row < open_row or row > close_row then
+		return false
+	end
+
 	local body = table.concat(lines, "\n", open_row + 1, close_row - 1)
 	return true, body
 end
