@@ -1,7 +1,7 @@
 local M = {}
 
 function M.index_html()
-    return [[
+	return [[
 <!doctype html>
 <html lang="en">
 <head>
@@ -67,4 +67,3 @@ function M.index_html()
 end
 
 return M
-    `` `
