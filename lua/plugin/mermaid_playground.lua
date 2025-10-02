@@ -5,11 +5,11 @@ vim.g.loaded_mermaid_playground = true
 
 local M = require("mermaid_playground")
 
-vim.api.nvim_create_user_command("MermaidOpen", function(opts)
+vim.api.nvim_create_user_command("MermaidOpen", function()
 	M.open({ priority = "nvim" })
 end, {})
 
-vim.api.nvim_create_user_command("MermaidOpenWeb", function(opts)
+vim.api.nvim_create_user_command("MermaidOpenWeb", function()
 	M.open({ priority = "web" })
 end, {})
 

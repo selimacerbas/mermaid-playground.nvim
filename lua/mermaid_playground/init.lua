@@ -4,10 +4,10 @@ local utils = require("mermaid_playground.utils")
 local html = require("mermaid_playground.html")
 
 local default_cfg = {
-	run_priority = "nvim",
-	browser = nil,
-	detect_packs = true,
-	force_regen_html = false,
+	run_priority = "nvim", -- "nvim" | "web"
+	browser = nil, -- nil = auto-detect; or pass a command (e.g. "firefox")
+	detect_packs = true, -- detect Iconify packs (logos:, devicon:, etc.)
+	force_regen_html = false, -- rewrite bundled HTML every setup
 	html_filename = "mermaid-playground.html",
 }
 
@@ -31,31 +31,18 @@ local function ensure_html()
 end
 
 local function build_local_url(src, packs)
-	local b64 = utils.base64_urlencode(src) -- URL-safe base64 (no padding)
-	local hash = {
-		"src=" .. b64,
-		"b64=1",
-	}
+	local b64 = utils.base64_urlencode(src)
+	local args = { "src=" .. b64, "b64=1", "autorender=1" }
 	if packs and #packs > 0 then
-		table.insert(hash, "packs=" .. utils.urlencode(table.concat(packs, ",")))
+		table.insert(args, "packs=" .. utils.urlencode(table.concat(packs, ",")))
 	end
-	table.insert(hash, "autorender=1")
-	-- theme is remembered inside the page; you can append `theme=dark|light` if you want
-	local hash_qs = table.concat(hash, "&")
 	local path = ensure_html()
-	return "file://" .. path .. "#" .. hash_qs
+	return "file://" .. path .. "#" .. table.concat(args, "&")
 end
 
 local function build_web_url(src)
-	-- Best-effort: Mermaid Live supports `#base64:` in addition to `#pako:`
-	-- We use base64 (URL-safe) so we don't ship a deflate dependency.
 	local b64 = utils.base64_urlencode(src)
 	return "https://mermaid.live/edit#base64:" .. b64
-end
-
-local function open_url(url)
-	utils.open_in_browser(url, M._cfg.browser)
-	vim.notify("Opened Mermaid playground", vim.log.levels.INFO, { title = "mermaid" })
 end
 
 local function get_src_under_cursor()
@@ -70,6 +57,11 @@ local function get_src_under_cursor()
 	return nil
 end
 
+local function open_url(url)
+	utils.open_in_browser(url, M._cfg.browser)
+	vim.notify("Opened Mermaid playground", vim.log.levels.INFO, { title = "mermaid" })
+end
+
 function M.open(opts)
 	opts = opts or {}
 	local src = get_src_under_cursor()
@@ -77,14 +69,9 @@ function M.open(opts)
 		vim.notify("No mermaid fenced code block under cursor", vim.log.levels.WARN, { title = "mermaid" })
 		return
 	end
-	local packs = {}
-	if M._cfg.detect_packs then
-		packs = utils.detect_icon_packs(src)
-	end
-
+	local packs = M._cfg.detect_packs and utils.detect_icon_packs(src) or {}
 	local priority = (opts.priority or M._cfg.run_priority):lower()
 	local url = priority == "web" and build_web_url(src) or build_local_url(src, packs)
-
 	open_url(url)
 	M._last_url = url
 end
@@ -96,10 +83,7 @@ function M.copy_url(opts)
 		vim.notify("No mermaid fenced code block under cursor", vim.log.levels.WARN, { title = "mermaid" })
 		return
 	end
-	local packs = {}
-	if M._cfg.detect_packs then
-		packs = utils.detect_icon_packs(src)
-	end
+	local packs = M._cfg.detect_packs and utils.detect_icon_packs(src) or {}
 	local priority = (opts.priority or M._cfg.run_priority):lower()
 	local url = priority == "web" and build_web_url(src) or build_local_url(src, packs)
 	vim.fn.setreg("+", url)
