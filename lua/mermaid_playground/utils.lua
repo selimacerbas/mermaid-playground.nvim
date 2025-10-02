@@ -1,13 +1,13 @@
 local M = {}
 
--- Minimal URL-encode
+-- Minimal URL-encode (used for icon packs list if needed)
 function M.urlencode(str)
 	return (str:gsub("[^%w%-%_%.~]", function(c)
 		return string.format("%%%02X", string.byte(c))
 	end))
 end
 
--- URL-safe base64 without padding (pure Lua)
+-- URL-safe base64 without padding (pure Lua) - kept for future use
 function M.base64_urlencode(data)
 	local b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	local bytes = { data:byte(1, #data) }
@@ -51,7 +51,7 @@ function M.open_in_browser(url, cmd)
 	end
 end
 
--- Detect Iconify packs: logos:google-cloud -> "logos"
+-- Detect Iconify packs: logos:google-cloud -> "logos" (HTML also auto-detects)
 function M.detect_icon_packs(src)
 	local names, seen = {}, {}
 	for p in src:gmatch("%f[%w]([%l%d%-]+):[%l%d%-]+%f[^%w]") do
@@ -65,11 +65,10 @@ end
 
 -- ================= Markdown fenced block extraction =================
 
--- TS helpers
+-- Helpers
 local function ts_text(node, bufnr)
 	return node and vim.treesitter.get_node_text(node, bufnr) or nil
 end
-
 local function ancestor_of_type(node, wanted)
 	while node do
 		if node:type() == wanted then
@@ -79,7 +78,6 @@ local function ancestor_of_type(node, wanted)
 	end
 	return nil
 end
-
 local function first_named_child_of_types(node, types)
 	if not node then
 		return nil
@@ -98,7 +96,6 @@ local function first_named_child_of_types(node, types)
 	end
 	return nil
 end
-
 local function any_ancestor_is_block_quote(node)
 	while node do
 		if node:type() == "block_quote" then
@@ -109,18 +106,15 @@ local function any_ancestor_is_block_quote(node)
 	return false
 end
 
--- Get node under cursor with fallbacks
 local function node_at_cursor(bufnr)
 	local row, col = unpack(vim.api.nvim_win_get_cursor(0)) -- 1-based row
 	row = row - 1
-	-- Neovim 0.10+ convenience
 	if vim.treesitter.get_node then
 		local ok, node = pcall(vim.treesitter.get_node, { bufnr = bufnr })
 		if ok and node then
 			return node
 		end
 	end
-	-- Parse tree fallback
 	local okp, parser = pcall(vim.treesitter.get_parser, bufnr)
 	if not okp or not parser then
 		return nil
@@ -132,7 +126,6 @@ local function node_at_cursor(bufnr)
 	return tree:root():named_descendant_for_range(row, col, row, col)
 end
 
--- Try multiple TS languages for markdown-like buffers
 local function try_parsers(bufnr, langs)
 	for _, lang in ipairs(langs) do
 		local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
@@ -143,60 +136,52 @@ local function try_parsers(bufnr, langs)
 	return nil
 end
 
--- MAIN: Treesitter method (no queries). Works on markdown & mdx.
+-- MAIN: Tree-sitter method (no queries). Works on markdown & mdx.
 function M.treesitter_mermaid_under_cursor()
 	local bufnr = 0
 	local parser = try_parsers(bufnr, { "markdown", "mdx", "markdown_inline" })
 	if not parser then
 		return false
 	end
+	parser:parse(true)
 
-	parser:parse(true) -- ensure latest
 	local node = node_at_cursor(bufnr)
 	if not node then
 		return false
 	end
 
-	-- Climb to the nearest fenced code block
+	-- nearest fenced code block
 	local block = ancestor_of_type(node, "fenced_code_block")
 	if not block then
 		return false
 	end
 
-	-- Find info + code children (support common variants)
-	local info = first_named_child_of_types(block, { "info_string", "info" }) -- 'info' is rare, harmless if absent
+	local info = first_named_child_of_types(block, { "info_string", "info" })
 	local code = first_named_child_of_types(block, { "code_fence_content", "raw_fence_content" })
 	if not code then
 		return false
 	end
 
-	-- Only proceed if the info string indicates mermaid (case-insensitive or Pandoc-style)
 	local info_txt = (ts_text(info, bufnr) or ""):lower()
-	-- Accept plain "mermaid" or attributes with "mermaid" inside: ```{.mermaid}
 	if not info_txt:find("mermaid", 1, true) then
 		return false
 	end
 
-	-- Extract source
 	local src = ts_text(code, bufnr) or ""
 	src = src:gsub("^%s+", ""):gsub("%s+$", "")
-
-	-- If inside a block quote, unquote like diagram.nvim
 	if any_ancestor_is_block_quote(block) then
 		src = src:gsub("\n>", "\n"):gsub("^>", "")
 	end
-
 	if #src == 0 then
 		return false
 	end
 	return true, src
 end
 
--- Regex fallback: case-insensitive; supports Pandoc attrs; cursor can be on fences
+-- Regex fallback: case-insensitive; Pandoc attrs; cursor can be on fences
 function M.regex_mermaid_under_cursor()
 	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
 	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-
 	local function fence_info(line)
 		local fence, rest = (line or ""):match("^%s*([`~]{3,})%s*(.*)$")
 		if not fence then
@@ -208,8 +193,6 @@ function M.regex_mermaid_under_cursor()
 		local ok = (lang == "mermaid") or lower:match("{[^}]*mermaid[^}]*}")
 		return fence, ok
 	end
-
-	-- find opening mermaid fence at/above cursor
 	local open_row, fence
 	for i = cur, 1, -1 do
 		local f, ok = fence_info(lines[i])
@@ -225,8 +208,6 @@ function M.regex_mermaid_under_cursor()
 	if not open_row then
 		return false
 	end
-
-	-- find matching closing fence
 	local close_row
 	for i = open_row + 1, #lines do
 		if (lines[i] or ""):match("^%s*" .. vim.pesc(fence) .. "%s*$") then
@@ -237,12 +218,9 @@ function M.regex_mermaid_under_cursor()
 	if not close_row then
 		return false
 	end
-
-	-- allow cursor on either fence or inside
 	if cur < open_row or cur > close_row then
 		return false
 	end
-
 	local body = table.concat(lines, "\n", open_row + 1, close_row - 1)
 	body = body:gsub("^%s+", ""):gsub("%s+$", "")
 	return #body > 0, body
