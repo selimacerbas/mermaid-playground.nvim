@@ -118,7 +118,6 @@
             padding: .75rem;
         }
 
-        /* Textarea editor */
         textarea,
         input[type="text"] {
             width: 100%;
@@ -163,7 +162,6 @@
             margin-top: .4rem;
         }
 
-        /* Preview & zoom */
         #preview {
             padding: .5rem;
         }
@@ -190,6 +188,11 @@
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.02);
             max-height: 70vh;
+            cursor: grab;
+        }
+
+        #panzoom.dragging {
+            cursor: grabbing;
         }
 
         #previewHost {
@@ -219,7 +222,6 @@
             display: none !important;
         }
 
-        /* LIGHT theme overrides */
         body[data-theme="light"] {
             --bg: #f7fafc;
             --panel: #ffffff;
@@ -232,7 +234,6 @@
             --kbd-border: #e5e7eb;
         }
 
-        /* Error & status panels */
         #errors {
             background: rgba(239, 68, 68, 0.12);
             border: 1px solid rgba(239, 68, 68, 0.35);
@@ -274,6 +275,8 @@
                 <h2>Diagram source</h2>
                 <div class="body">
                     <div class="controls">
+                        <label for="packs" class="sr-only" aria-hidden="true"
+                            style="position:absolute;left:-9999px;">Icon packs</label>
                         <input id="packs" type="text"
                             placeholder="Icon packs (comma-separated): e.g. logos, simple-icons, https://.../icons.json" />
                         <button id="renderBtn" class="btn">Render</button>
@@ -284,36 +287,9 @@
                             indent</button>
                     </div>
                     <textarea id="src" spellcheck="false"
-                        placeholder="Write only the Mermaid diagram here (no ``` wrapper). Use packs like logos:google-cloud. Ctrl/Cmd+Enter = Render">architecture-beta
-                        group proj(cloud)[GCP Project]
-                        group net(cloud)[VPC] in proj
-                        group dmz(cloud)[Public DMZ] in net
-                        group appg(cloud)[App Tier] in net
-                        group datag(cloud)[Data Tier] in net
-
-                        service users(internet)[Users]
-                        service lb(cloud)[HTTPS Load Balancer] in dmz
-                        service cdn(cloud)[Cloud CDN] in dmz
-                        service fe(disk)[Static Site] in dmz
-
-                        service api(server)[Cloud Run API] in appg
-                        service vpcx(server)[VPC Access] in appg
-
-                        service sql(database)[Cloud SQL] in datag
-                        service cache(server)[Memorystore] in datag
-                        service bucket(disk)[Object Storage] in datag
-
-                        users:R --> L:lb
-                        lb:B --> T:cdn
-                        cdn:R --> L:fe
-
-                        lb:R --> L:api
-                        api:R --> L:vpcx
-                        vpcx:R -- L:sql
-                        vpcx:R -- L:cache
-                        api:B --> T:bucket</textarea>
-                    <div id="errors" class="hidden"></div>
-                    <div id="status"></div>
+                        placeholder="Write only the Mermaid diagram here (no ``` wrapper). Use packs like logos:google-cloud. Ctrl/Cmd+Enter = Render"></textarea>
+                    <div id="errors" class="hidden" role="alert"></div>
+                    <div id="status" aria-live="polite"></div>
                     <p class="hint">Tips: Add icon packs by name (e.g. <code class="kbd">logos</code>) or full Iconify
                         <code class="kbd">icons.json</code> URLs. <code class="kbd">Ctrl/Cmd+Enter</code> to render.
                     </p>
@@ -479,44 +455,32 @@
         }
         toggleEditorBtn.addEventListener('click', () => {const nowHidden = !editorCard.classList.contains('hidden'); setEditorCollapsed(nowHidden, true);});
 
+        async function loadInitialFromFile() {
+            // A light bootstrap that prefers a project-provided diagram.mmd
+            try {
+                const resp = await fetch('diagram.mmd?ts=' + Date.now(), {cache: 'no-store'});
+                if (resp.ok) {
+                    const txt = await resp.text();
+                    if (txt && txt.trim()) {
+                        srcEl.value = txt;
+                        statusEl.textContent = 'Loaded from diagram.mmd';
+                    }
+                }
+            } catch (e) { /* ignore */}
+        }
+
         // Boot
-        (function boot() {
+        (async function boot() {
             let saved = {}; try {saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');} catch { }
             if (typeof saved.packs === 'string') packsEl.value = saved.packs;
             if (saved.zoom) zoom = saved.zoom; if (saved.fitMode) fitMode = saved.fitMode;
             applyTheme(saved.theme || 'dark');
             if (typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
-            if (saved.editorCollapsed) setEditorCollapsed(!!saved.editorCollapsed, false);
+            await loadInitialFromFile();
             renderMain();
             setTimeout(() => {setFitMode(fitMode); if (fitMode === 'none') applyZoomToSVG();}, 40);
         })();
         themeBtn.addEventListener('click', toggleTheme);
-
-        // --- BEGIN: Neovim sync (auto-load diagram.mmd written by the plugin) ---
-        const NEOVIM_SYNC = new (class {
-            constructor() {this.last = ''; this.t = null;}
-            async tick() {
-                try {
-                    const r = await fetch('diagram.mmd?ts=' + Date.now());
-                    if (!r.ok) return;
-                    const txt = await r.text();
-                    if (txt !== this.last) {
-                        this.last = txt;
-                        srcEl.value = txt;
-                        await renderMain();
-                    }
-                } catch (_) { /* ignore */}
-            }
-            start() {if (!this.t) {this.t = setInterval(() => this.tick(), 600); this.tick();} }
-            stop() {if (this.t) {clearInterval(this.t); this.t = null;} }
-        })();
-
-        // Enable sync by default when opened from the plugin.
-        // You can disable via query: ?vim=0
-        if (new URLSearchParams(location.search).get('vim') !== '0') {
-            NEOVIM_SYNC.start();
-        }
-// --- END: Neovim sync ---
     </script>
 
     <noscript>

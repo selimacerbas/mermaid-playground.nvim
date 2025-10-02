@@ -1,63 +1,44 @@
 local M = {}
 
-function M.join(...)
-	local sep = package.config:sub(1, 1)
-	local out = table.concat({ ... }, sep)
-	return out
-end
-
-function M.ensure_dir(path)
+function M.mkdirp(path)
 	if vim.fn.isdirectory(path) == 0 then
 		vim.fn.mkdir(path, "p")
 	end
 end
 
-function M.write_file(path, content)
-	local f = assert(io.open(path, "wb"))
-	f:write(content or "")
-	f:close()
+function M.file_exists(path)
+	local stat = vim.loop.fs_stat(path)
+	return stat and stat.type == "file"
 end
 
-function M.read_file(path)
-	local f = io.open(path, "rb")
-	if not f then
-		return nil
-	end
-	local d = f:read("*a")
-	f:close()
-	return d
+function M.write_text(path, text)
+	local fd = assert(vim.loop.fs_open(path, "w", 420)) -- 0644
+	assert(vim.loop.fs_write(fd, text, 0))
+	assert(vim.loop.fs_close(fd))
 end
 
-function M.copy_if_missing(src, dst)
-	local dir = vim.fn.fnamemodify(dst, ":h")
-	if vim.fn.isdirectory(dir) == 0 then
-		vim.fn.mkdir(dir, "p")
-	end
-	if vim.fn.filereadable(dst) == 1 then
-		return true
-	end
-	local data = M.read_file(src)
-	if not data then
-		return false, "Source not readable: " .. src
-	end
-	M.write_file(dst, data)
-	return true
+function M.read_text(path)
+	local fd = assert(vim.loop.fs_open(path, "r", 420))
+	local stat = assert(vim.loop.fs_fstat(fd))
+	local data = assert(vim.loop.fs_read(fd, stat.size, 0))
+	assert(vim.loop.fs_close(fd))
+	return data
 end
 
-function M.open_url(url)
-	if vim.ui and vim.ui.open then
-		pcall(vim.ui.open, url) -- nvim 0.10+
-		return
-	end
-	local cmd
-	if vim.fn.has("mac") == 1 then
-		cmd = { "open", url }
-	elseif vim.fn.has("win32") == 1 then
-		cmd = { "cmd", "/c", "start", "", url }
-	else
-		cmd = { "xdg-open", url }
-	end
-	vim.fn.jobstart(cmd, { detach = true })
+function M.copy_file(src, dst)
+	local data = M.read_text(src)
+	M.write_text(dst, data)
+end
+
+function M.resolve_asset(rel)
+	-- Resolve to this plugin’s root based on this file location  local info = debug.getinfo(1, "S')  local this = info.source:sub(2) -- strip '@'  local root = this:match('(.-)/lua/mermaid_playground/util%.lua$')  return root .. "/' .. rel
+end
+
+function M.open_in_browser(url)  local cmd  if vim.fn.has('mac') == 1 then
+  cmd = { 'open', url }  elseif vim.fn.has('unix') == 1 then
+  cmd = { 'xdg-open', url }  elseif vim.fn.has('win32') == 1 then
+  cmd = { 'cmd.exe', '/c', 'start', url }  end  if cmd then
+  vim.fn.jobstart(cmd, { detach = true })  end
 end
 
 return M
