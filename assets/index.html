@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Playground</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #0f172a;
+            --stroke: #1f2937;
+            --fg: #e5e7eb;
+            --muted: #9ca3af;
+            --field-bg: #0b1229;
+            --field-border: #233052
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial
+        }
+
+        header {
+            padding: .8rem 1rem;
+            display: flex;
+            gap: .5rem;
+            align-items: center;
+            border-bottom: 1px solid var(--stroke);
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, .02)
+        }
+
+        .sp {
+            flex: 1
+        }
+
+        .btn {
+            background: #1d4ed8;
+            color: #fff;
+            border: none;
+            padding: .5rem .8rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600
+        }
+
+        .btn.ghost {
+            background: transparent;
+            border: 1px solid var(--stroke);
+            color: var(--fg)
+        }
+
+        .btn.ghost.active {
+            border-color: #1d4ed8;
+            box-shadow: 0 0 0 2px rgba(29, 78, 216, .25) inset
+        }
+
+        .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem
+        }
+
+        .grid.collapsed {
+            grid-template-columns: 1fr
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--stroke);
+            border-radius: 14px;
+            overflow: hidden
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: .95rem;
+            padding: .7rem 1rem;
+            border-bottom: 1px solid var(--stroke);
+            color: var(--muted)
+        }
+
+        .body {
+            padding: .75rem
+        }
+
+        textarea,
+        input {
+            width: 100%;
+            background: var(--field-bg);
+            color: var(--fg);
+            border: 1px solid var(--field-border);
+            border-radius: 10px;
+            padding: .7rem .8rem;
+            font: .95rem/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace
+        }
+
+        textarea {
+            min-height: 460px;
+            resize: vertical
+        }
+
+        .toolbar {
+            display: flex;
+            gap: .4rem;
+            align-items: center;
+            padding: .5rem .5rem 0;
+            flex-wrap: wrap
+        }
+
+        #panzoom {
+            position: relative;
+            overflow: auto;
+            border: 1px dashed var(--stroke);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, .02);
+            max-height: 70vh
+        }
+
+        .hidden {
+            display: none !important
+        }
+
+        .mermaid svg {
+            display: block
+        }
+
+        #errors {
+            background: rgba(239, 68, 68, .12);
+            border: 1px solid rgba(239, 68, 68, .35);
+            color: #fecaca;
+            padding: .6rem .8rem;
+            border-radius: 10px;
+            margin-top: .5rem;
+            white-space: pre-wrap
+        }
+
+        /* light */
+        body[data-theme="light"] {
+            --bg: #f7fafc;
+            --panel: #fff;
+            --stroke: #e5e7eb;
+            --fg: #111827;
+            --muted: #4b5563;
+            --field-bg: #fff;
+            --field-border: #d1d5db
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <strong>Mermaid Playground</strong><span class="sp"></span>
+        <button id="themeBtn" class="btn ghost">Theme: dark</button>
+        <button id="toggleEditor" class="btn ghost">Hide editor</button>
+    </header>
+
+    <div class="wrap">
+        <div id="grid" class="grid">
+            <div id="editorCard" class="card">
+                <h2>Diagram source</h2>
+                <div class="body">
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+                        <input id="packs" placeholder="Icon packs (comma-separated), e.g. logos, simple-icons" />
+                        <button id="renderBtn" class="btn">Render</button>
+                        <button id="saveBtn" class="btn ghost">Save</button>
+                    </div>
+                    <textarea id="src" spellcheck="false" placeholder="Write Mermaid here (no ``` wrapper)"></textarea>
+                    <div id="errors" class="hidden"></div>
+                    <div id="status" style="color:var(--muted);font-size:.85rem;margin-top:.4rem"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Preview</h2>
+                <div class="toolbar">
+                    <span>Zoom:</span>
+                    <button id="zoomOut" class="btn ghost">−</button>
+                    <button id="zoomReset" class="btn ghost">100%</button>
+                    <button id="zoomIn" class="btn ghost">+</button>
+                    <button id="fitWidth" class="btn ghost">Fit width</button>
+                    <button id="fitHeight" class="btn ghost">Fit height</button>
+                </div>
+                <div class="body">
+                    <div id="panzoom">
+                        <div id="previewHost" class="mermaid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        const qs = new URLSearchParams(location.search);
+        const srcParam = qs.get('src');            // when present, run in external mode
+        const packsQS = qs.get('packs') || '';
+        const themeQS = qs.get('theme') || 'dark';
+        const fitQS = qs.get('fit') || 'width';
+        const lockQS = qs.get('lock') || '0';   // when '1', hide editor controls
+
+        const srcEl = document.getElementById('src');
+        const packsEl = document.getElementById('packs');
+        const renderBtn = document.getElementById('renderBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const themeBtn = document.getElementById('themeBtn');
+        const toggleEditorBtn = document.getElementById('toggleEditor');
+        const errorsEl = document.getElementById('errors');
+        const statusEl = document.getElementById('status');
+        const grid = document.getElementById('grid');
+        const editorCard = document.getElementById('editorCard');
+        const previewHost = document.getElementById('previewHost');
+        const panzoom = document.getElementById('panzoom');
+        const fitWidthBtn = document.getElementById('fitWidth');
+        const fitHeightBtn = document.getElementById('fitHeight');
+        const zoomInBtn = document.getElementById('zoomIn');
+        const zoomOutBtn = document.getElementById('zoomOut');
+        const zoomResetBtn = document.getElementById('zoomReset');
+
+        let baseW = 0, baseH = 0, zoom = 1, fitMode = fitQS, currentSVG = '';
+
+        function showError(e) {errorsEl.textContent = (e?.message || String(e)); errorsEl.classList.remove('hidden');}
+        function clearError() {errorsEl.textContent = ''; errorsEl.classList.add('hidden');}
+        function tokens(v) {return v.split(',').map(s => s.trim()).filter(Boolean);}
+        function detectPacks(src) {const re = /\\b([a-z0-9-]+):[a-z0-9-]+\\b/gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
+        function parseVB(svg) {const vb = svg.getAttribute('viewBox'); if (!vb) return null; const p = vb.trim().split(/\\s+/).map(Number); return p.length === 4 ? {w: p[2], h: p[3]} : null;}
+        function applyZoom() {const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return; svg.removeAttribute('style'); svg.setAttribute('width', String(Math.round(baseW * zoom))); svg.setAttribute('height', String(Math.round(baseH * zoom))); zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;}
+        function computeFit() {const cw = panzoom.clientWidth || baseW; const ch = panzoom.clientHeight || baseH; if (fitMode === 'width') zoom = cw / baseW; else if (fitMode === 'height') zoom = ch / baseH; zoom = Math.min(8, Math.max(.1, zoom)); applyZoom();}
+        function applyTheme(t) {mermaid.initialize({startOnLoad: false, theme: (t === 'dark' ? 'dark' : 'default'), securityLevel: 'strict'}); themeBtn.textContent = `Theme: ${t}`; document.body.dataset.theme = t;}
+        function setFit(mode) {fitMode = mode; fitWidthBtn.classList.toggle('active', mode === 'width'); fitHeightBtn.classList.toggle('active', mode === 'height'); if (mode === 'none') applyZoom(); else computeFit();}
+
+        async function registerPacks(list) {
+            for (const name of list) {
+                try {
+                    await mermaid.registerIconPacks([{name, loader: () => fetch(`https://unpkg.com/@iconify-json/${name}@1/icons.json`).then(r => r.json())}]);
+                } catch (e) {console.warn('pack failed', name, e);}
+            }
+        }
+
+        async function render(src) {
+            clearError();
+            const userPacks = tokens(packsEl.value || packsQS);
+            const autoPacks = detectPacks(src);
+            const allPacks = [...new Set([...userPacks, ...autoPacks])];
+            statusEl.textContent = allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '';
+            await registerPacks(allPacks);
+            previewHost.innerHTML = '';
+            try {
+                const {svg} = await mermaid.render('m' + Math.random().toString(36).slice(2), src);
+                currentSVG = svg;
+                previewHost.innerHTML = svg;
+                const vb = parseVB(previewHost.querySelector('svg'));
+                baseW = vb ? vb.w : (Number(previewHost.querySelector('svg').getAttribute('width')) || 1200);
+                baseH = vb ? vb.h : (Number(previewHost.querySelector('svg').getAttribute('height')) || 800);
+                if (fitMode === 'none') applyZoom(); else computeFit();
+            } catch (e) {showError(e);}
+        }
+
+        async function loadExternal() {
+            const r = await fetch(srcParam, {cache: 'no-store'});
+            if (!r.ok) throw new Error(`Failed to load ${srcParam}: ${r.status}`);
+            await render(await r.text());
+        }
+
+        // UI wiring
+        zoomInBtn.onclick = () => {setFit('none'); zoom *= 1.2; applyZoom();};
+        zoomOutBtn.onclick = () => {setFit('none'); zoom /= 1.2; applyZoom();};
+        zoomResetBtn.onclick = () => {setFit('none'); zoom = 1; applyZoom();};
+        fitWidthBtn.onclick = () => setFit(fitMode === 'width' ? 'none' : 'width');
+        fitHeightBtn.onclick = () => setFit(fitMode === 'height' ? 'none' : 'height');
+
+        panzoom.addEventListener('wheel', (e) => {if (e.ctrlKey || e.metaKey) {e.preventDefault(); setFit('none'); zoom *= (e.deltaY > 0 ? 1 / 1.1 : 1.1); applyZoom();} }, {passive: false});
+
+        renderBtn.onclick = () => render(srcEl.value);
+        saveBtn.onclick = () => localStorage.setItem('mp_src', srcEl.value);
+
+        toggleEditorBtn.onclick = () => {
+            const hide = !editorCard.classList.contains('hidden');
+            editorCard.classList.toggle('hidden', hide);
+            document.getElementById('grid').classList.toggle('collapsed', hide);
+            setTimeout(() => {if (fitMode === 'none') (srcParam ? loadExternal() : render(srcEl.value)); else computeFit();}, 30);
+        };
+
+        themeBtn.onclick = () => {
+            const next = (document.body.dataset.theme || 'dark') === 'dark' ? 'light' : 'dark';
+            applyTheme(next); (srcParam ? loadExternal() : render(srcEl.value));
+        };
+
+        // Boot
+        (function () {
+            applyTheme(themeQS);
+            if (srcParam) {             // External file mode
+                editorCard.classList.add('hidden');
+                document.getElementById('grid').classList.add('collapsed');
+                if (lockQS === '1') toggleEditorBtn.classList.add('hidden');
+                loadExternal();
+            } else {                    // In-page editor mode
+                packsEl.value = packsQS;
+                const saved = localStorage.getItem('mp_src');
+                srcEl.value = saved || "graph TD\nA[Edit me] --> B[Render]";
+                render(srcEl.value);
+            }
+        })();
+    </script>
+</body>
+
+</html>
