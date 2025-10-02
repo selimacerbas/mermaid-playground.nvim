@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mermaid Playground | Neovim</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #0f172a;
+            --stroke: #1f2937;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            display: grid;
+            place-items: center;
+        }
+
+        .mermaid {
+            font-size: 16px;
+        }
+
+        /* Base font size */
+    </style>
+</head>
+
+<body>
+    <div class="mermaid">
+        %%MERMAID_CODE%%
+    </div>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark', // Or 'default' for light theme
+            securityLevel: 'strict'
+        });
+    </script>
+    <noscript>JavaScript is required to view Mermaid diagrams.</noscript>
+</body>
+
+</html>

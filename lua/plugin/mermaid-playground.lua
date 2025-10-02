@@ -1,13 +1,21 @@
--- plugin/mermaid-playground.lua
-local function define_cmd(name, rhs, opts)
-	pcall(vim.api.nvim_del_user_command, name) -- avoids clashes with Lazy stubs
-	vim.api.nvim_create_user_command(name, rhs, opts or {})
+local core = require("mermaid-playground.core")
+local server = require("mermaid-playground.server")
+
+local function render_current_block()
+	local mermaid_code = core.find_mermaid_block()
+	if not mermaid_code or mermaid_code == "" then
+		vim.notify("No Mermaid code block found under cursor.", vim.log.levels.WARN)
+		return
+	end
+
+	local html_content = core.prepare_html(mermaid_code)
+	if not html_content then
+		return -- Error message already shown by prepare_html
+	end
+
+	server.render(html_content)
 end
 
-define_cmd("MermaidPlayground", function()
-	require("mermaid-playground").open()
-end, { desc = "Open Mermaid playground for the fenced block under cursor" })
-
-define_cmd("MermaidPlaygroundStop", function()
-	require("mermaid-playground").stop()
-end, { desc = "Stop Mermaid playground local server" })
+vim.api.nvim_create_user_command("MermaidPlayground", render_current_block, {
+	desc = "Render the Mermaid diagram under the cursor in a browser",
+})

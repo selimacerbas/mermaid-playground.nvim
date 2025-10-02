@@ -1,153 +1,86 @@
-local uv = vim.loop
 local M = {}
 
-local state = {
-	server = nil,
-	port = 4070,
-	html_path = nil,
-	theme = "dark",
-	latest_code = "",
-	html_cache = nil,
-}
+local server_job_id = nil
+local port = 4070
+local temp_dir = vim.fn.stdpath("cache") .. "/mermaid-playground"
 
-local function read_file(path)
-	local fd = assert(io.open(path, "rb"))
-	local data = fd:read("*a")
-	fd:close()
-	return data
-end
+-- Create temporary directory if it doesn't exist
+vim.fn.mkdir(temp_dir, "p")
 
-local function build_index_html()
-	local html = state.html_cache or read_file(state.html_path)
-	-- inject localStorage payload *before* the page's module script runs
-	local payload_tbl = {
-		src = state.latest_code or "",
-		theme = state.theme or "dark",
-	}
-	local ok, payload_json = pcall(vim.json.encode, payload_tbl)
-	if not ok then
-		payload_json = "{}"
-	end
-
-	local inject = ([[<script>(function(){try{var prev=JSON.parse(localStorage.getItem('mermaidPlayground')||'{}');
-  var next=Object.assign({},prev,%s);localStorage.setItem('mermaidPlayground',JSON.stringify(next));}catch(e){}})();</script>]]):format(
-		payload_json
-	)
-
-	-- Put into <head> for early execution
-	html = html:gsub("</head>", inject .. "</head>", 1)
-	return html
-end
-
-local function http_ok(body, content_type)
-	content_type = content_type or "text/html; charset=utf-8"
-	local headers = table.concat({
-		"HTTP/1.1 200 OK",
-		"Content-Type: " .. content_type,
-		"Content-Length: " .. tostring(#body),
-		"Cache-Control: no-cache, no-store, must-revalidate",
-		"Connection: close",
-		"\r\n",
-	}, "\r\n")
-	return headers .. body
-end
-
-local function http_not_found()
-	local body = "<h1>404</h1>"
-	local headers = table.concat({
-		"HTTP/1.1 404 Not Found",
-		"Content-Type: text/html; charset=utf-8",
-		"Content-Length: " .. tostring(#body),
-		"Connection: close",
-		"\r\n",
-	}, "\r\n")
-	return headers .. body
-end
-
-local function parse_request_line(data)
-	local method, path = data:match("^(%u+)%s+([^%s]+)%s+HTTP")
-	return method or "GET", path or "/"
-end
-
-local function handle_client(client)
-	client:read_start(function(err, chunk)
-		if err then
-			return
-		end
-		if not chunk then
-			client:shutdown()
-			client:close()
-			return
-		end
-
-		local req = chunk
-		if not req:find("\r\n\r\n", 1, true) then
-			-- wait for full headers (very simple; good enough for small GETs)
-			return
-		end
-
-		local _, path = parse_request_line(req)
-		local res
-		if path == "/" then
-			local body = build_index_html()
-			res = http_ok(body, "text/html; charset=utf-8")
-		elseif path == "/health" then
-			res = http_ok("ok", "text/plain; charset=utf-8")
-		else
-			res = http_not_found()
-		end
-
-		client:write(res)
-	end)
-end
-
---- Start the tiny HTTP server if not running
----@param opts {port: integer, html_path: string, theme?: string}
----@return boolean ok, string|nil err
-function M.start(opts)
-	if state.server and not state.server:is_closing() then
-		-- already running; just refresh config
-		state.port = opts.port or state.port
-		state.html_path = opts.html_path or state.html_path
-		state.theme = opts.theme or state.theme
-		if not state.html_cache then
-			state.html_cache = read_file(state.html_path)
-		end
+-- Starts a simple Python web server
+function M.start()
+	if server_job_id and vim.fn.jobwait({ server_job_id }, 0)[1] == -1 then
+		-- Server is already running
 		return true
 	end
 
-	state.port = opts.port or 4070
-	state.html_path = assert(opts.html_path, "html_path is required")
-	state.theme = opts.theme or state.theme
-	state.html_cache = read_file(state.html_path)
-
-	local server = uv.new_tcp()
-	local ok_bind, err = server:bind("127.0.0.1", state.port)
-	if not ok_bind then
-		return false, err or ("cannot bind to port " .. tostring(state.port))
+	local command
+	if vim.fn.executable("python3") then
+		command = "python3"
+	elseif vim.fn.executable("python") then
+		command = "python"
+	else
+		vim.notify("Python is required to run the web server.", vim.log.levels.ERROR)
+		return false
 	end
-	server:listen(64, function(err2)
-		if err2 then
-			return
-		end
-		local client = uv.new_tcp()
-		server:accept(client)
-		handle_client(client)
-	end)
 
-	state.server = server
+	server_job_id = vim.fn.jobstart({
+		command,
+		"-m",
+		"http.server",
+		tostring(port),
+		"--directory",
+		temp_dir,
+	}, {
+		-- Detach the process so it keeps running
+		detach = true,
+		-- Hide stdout/stderr for a cleaner experience
+		stdout_buffered = true,
+		stderr_buffered = true,
+	})
+
+	if server_job_id <= 0 then
+		vim.notify("Failed to start web server.", vim.log.levels.ERROR)
+		server_job_id = nil
+		return false
+	end
+
+	vim.notify("Mermaid server started at http://localhost:" .. port)
+	-- Give the server a moment to start up
+	vim.defer_fn(function() end, 200)
 	return true
 end
 
-function M.stop()
-	if state.server and not state.server:is_closing() then
-		pcall(state.server.close, state.server)
+-- Writes content to index.html and opens it in the browser
+function M.render(html_content)
+	if not M.start() then
+		return
 	end
-	state.server = nil
-end
 
-function M.set_current_code(code)
-	state.latest_code = code or ""
+	local index_file = temp_dir .. "/index.html"
+	local file = io.open(index_file, "w")
+	if not file then
+		vim.notify("Failed to write temporary HTML file.", vim.log.levels.ERROR)
+		return
+	end
+	file:write(html_content)
+	file:close()
+
+	local url = "http://localhost:" .. port
+	local open_cmd
+	local os = vim.loop.os_uname().sysname
+	if os == "Darwin" then
+		open_cmd = "open"
+	elseif os == "Linux" then
+		open_cmd = "xdg-open"
+	elseif os:match("Windows") then
+		open_cmd = "start"
+	else
+		vim.notify("Unsupported OS for opening browser.", vim.log.levels.WARN)
+		return
+	end
+
+	vim.fn.jobstart({ open_cmd, url }, { detach = true })
 end
 
 return M
