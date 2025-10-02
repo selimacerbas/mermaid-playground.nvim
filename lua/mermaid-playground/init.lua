@@ -4,9 +4,9 @@ local M = {}
 M.config = {
 	run_priority = "nvim", -- 'nvim' | 'web' | 'both'
 	select_block = "cursor", -- 'cursor' | 'first'
+	fallback_to_first = false, -- if true and no cursor block, pick first mermaid block
 	autoupdate_events = { "TextChanged", "TextChangedI", "InsertLeave" },
 	output = {
-		dir = ".mermaid-playground",
 		file = "diagram.mmd",
 		html = "index.html",
 	},
@@ -15,15 +15,12 @@ M.config = {
 		fit = "width", -- 'none' | 'width' | 'height'
 		packs = { "logos" }, -- pre-load packs in viewer
 	},
-	live_server = {
-		port = 5555,
-	},
-	keymaps = { -- plugin-defined maps (you can disable and map in lazy `keys`)
-		toggle = nil, -- e.g. "<leader>mpp" to enable here
-		render = nil, -- e.g. "<leader>mpr"
-		open = nil, -- e.g. "<leader>mpo"
-	},
-	-- NEW: project root resolution (so live-server serves the right folder)
+	live_server = { port = 5555 },
+	keymaps = { toggle = nil, render = nil, open = nil },
+
+	-- Workspace placement (so your repo stays clean)
+	workspace_mode = "temp", -- 'temp' | 'project'
+	workspace_dir = ".mermaid-playground", -- only used when workspace_mode='project'
 	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
 	root_markers = { ".git", "package.json", "pyproject.toml" },
 }
@@ -35,7 +32,6 @@ end
 local function path_exists(p)
 	return vim.loop.fs_stat(p) ~= nil
 end
-
 local function ensure_dir(path)
 	if vim.fn.isdirectory(path) == 0 then
 		vim.fn.mkdir(path, "p")
@@ -74,7 +70,7 @@ local function find_ancestor(start, markers)
 	return nil
 end
 
-local function resolve_root()
+local function resolve_project_root()
 	local mode = M.config.root_mode or "auto"
 	if mode == "cwd" then
 		return vim.fn.getcwd()
@@ -85,8 +81,29 @@ local function resolve_root()
 	if mode == "git" then
 		return find_ancestor(buf_dir(), { ".git" }) or vim.fn.getcwd()
 	end
-	-- auto
 	return find_ancestor(buf_dir(), M.config.root_markers) or buf_dir() or vim.fn.getcwd()
+end
+
+local function slugify(p)
+	local s = (p or ""):gsub("[\\/:]+", "_"):gsub("[^%w_%-]", "_")
+	s = s:gsub("__+", "_")
+	return s
+end
+
+local function workspace_dir()
+	if M.config.workspace_mode == "project" then
+		return join(resolve_project_root(), M.config.workspace_dir)
+	else
+		local state = vim.fn.stdpath("state") or vim.fn.stdpath("cache")
+		return join(state, "mermaid-playground", slugify(resolve_project_root()))
+	end
+end
+
+local function output_paths()
+	local dir = workspace_dir()
+	local file = join(dir, M.config.output.file)
+	local html = join(dir, M.config.output.html)
+	return dir, file, html
 end
 
 local function read_buf_lines(bufnr)
@@ -98,47 +115,67 @@ local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+-- Find a mermaid fenced block (supports ``` or ~~~). Returns body and range.
 local function find_mermaid_block(lines, mode, cursor_lnum)
-	local start_i, stop_i
-	if mode == "cursor" and cursor_lnum then
-		for i = cursor_lnum, 1, -1 do
-			if lines[i] and lines[i]:match("^```%s*mermaid") then
-				start_i = i
-				break
-			end
+	local function is_fence(line)
+		local sp, fence, lang = line:match("^(%s*)([`~]{3,})%s*([%w%-_]*)%s*$")
+		if not fence then
+			return nil
 		end
-		if start_i then
-			for i = start_i + 1, #lines do
-				if lines[i]:match("^```%s*$") then
-					stop_i = i
-					break
+		return sp or "", fence, lang:lower()
+	end
+
+	local function find_from(start_i)
+		for i = start_i, 1, -1 do
+			local _, fence, lang = is_fence(lines[i] or "")
+			if fence and lang == "mermaid" then
+				-- find closing matching fence
+				for j = i + 1, #lines do
+					local _, fence2, lang2 = is_fence(lines[j] or "")
+					if fence2 and (lang2 == "" or lang2 == nil) then
+						return i, j
+					end
 				end
 			end
+		end
+		return nil, nil
+	end
+
+	local start_i, stop_i
+	if mode == "cursor" and cursor_lnum then
+		start_i, stop_i = find_from(cursor_lnum)
+		if not start_i and not M.config.fallback_to_first then
+			return nil
 		end
 	end
 	if not start_i then
+		-- first mermaid block in file
 		for i = 1, #lines do
-			if lines[i]:match("^```%s*mermaid") then
-				start_i = i
+			local _, fence, lang = is_fence(lines[i] or "")
+			if fence and lang == "mermaid" then
 				for j = i + 1, #lines do
-					if lines[j]:match("^```%s*$") then
-						stop_i = j
+					local _, fence2, lang2 = is_fence(lines[j] or "")
+					if fence2 and (lang2 == "" or lang2 == nil) then
+						start_i, stop_i = i, j
 						break
 					end
 				end
-				break
+				if start_i then
+					break
+				end
 			end
 		end
 	end
 
 	if start_i and stop_i and stop_i > start_i + 1 then
 		local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
-		return body
+		return body, start_i, stop_i
 	end
 	return nil
 end
 
 local function write_file(path, text)
+	ensure_dir(vim.fn.fnamemodify(path, ":h"))
 	local f = assert(io.open(path, "w"))
 	f:write(text or "")
 	f:close()
@@ -160,7 +197,6 @@ local function url_encode(s)
 	end))
 end
 
--- Locate plugin root to copy viewer asset ----------------------------
 local function plugin_root()
 	local matches = vim.api.nvim_get_runtime_file("lua/mermaid-playground/init.lua", false)
 	if matches and matches[1] then
@@ -169,17 +205,9 @@ local function plugin_root()
 	return nil
 end
 
-local function output_paths()
-	local root = resolve_root()
-	local dir = join(root, M.config.output.dir)
-	local file = join(dir, M.config.output.file)
-	local html = join(dir, M.config.output.html)
-	return dir, file, html, root
-end
-
 local function ensure_viewer()
-	local root_dir = plugin_root()
-	local asset = root_dir and (root_dir .. "/assets/index.html") or nil
+	local asset_root = plugin_root()
+	local asset = asset_root and (asset_root .. "/assets/index.html") or nil
 	local dir, _, html = output_paths()
 	ensure_dir(dir)
 	if vim.fn.filereadable(html) == 0 then
@@ -214,11 +242,10 @@ function M.render_current_block()
 	local cur = vim.api.nvim_win_get_cursor(0)[1]
 	local body = find_mermaid_block(lines, M.config.select_block, cur)
 	if not body or trim(body) == "" then
-		vim.notify("[mermaid-playground] No ```mermaid block found", vim.log.levels.WARN)
+		vim.notify("[mermaid-playground] No mermaid block under cursor", vim.log.levels.INFO)
 		return
 	end
 	local dir, file = output_paths()
-	ensure_dir(dir)
 	write_file(file, body)
 	vim.notify("[mermaid-playground] wrote " .. file, vim.log.levels.DEBUG)
 end
@@ -232,19 +259,11 @@ local function ensure_server_started()
 end
 
 function M.preview_url()
-	local dir, file, html = output_paths()
 	local packs = table.concat(M.config.mermaid.packs or {}, ",")
-	local base = ("http://localhost:%d/%s/%s"):format(
-		M.config.live_server.port,
-		M.config.output.dir,
-		M.config.output.html
-	)
-
+	local base = ("http://localhost:%d/%s"):format(M.config.live_server.port, M.config.output.html)
 	if M.config.run_priority == "web" then
-		-- Page drives; no src= (textarea mode).
 		return ("%s?theme=%s&fit=%s&packs=%s"):format(base, M.config.mermaid.theme, M.config.mermaid.fit, packs)
 	else
-		-- NVim (or both) drives using external file source.
 		local lock = (M.config.run_priority == "nvim") and "1" or "0"
 		return ("%s?src=%s&theme=%s&fit=%s&packs=%s&lock=%s"):format(
 			base,
@@ -258,13 +277,13 @@ function M.preview_url()
 end
 
 function M.start()
-	local _, _, _, root = output_paths()
-	-- ensure live-server serves the correct directory
-	vim.fn.chdir(root)
-	ensure_viewer()
+	local dir = workspace_dir()
+	ensure_viewer() -- make sure index.html exists in workspace
 	if M.config.run_priority ~= "web" then
 		M.render_current_block()
 	end
+	-- Serve the WORKSPACE dir (not your repo root), so no repo pollution & correct paths
+	vim.fn.chdir(dir)
 	ensure_server_started()
 	open_url(M.preview_url())
 end
@@ -275,7 +294,7 @@ function M.stop()
 	end
 end
 
--- Optional helpers (so you can map without user commands) -----------
+-- Optional helpers ---------------------------------------------------
 M._running = false
 function M.toggle()
 	M._running = not M._running
@@ -308,7 +327,7 @@ function M.setup(user)
 		M.open()
 	end, {})
 
-	-- Optional plugin-provided keymaps (disabled by default)
+	-- Optional plugin-provided maps (off by default)
 	local km = M.config.keymaps or {}
 	if km.toggle then
 		vim.keymap.set("n", km.toggle, M.toggle, { desc = "Mermaid: toggle preview" })
@@ -320,7 +339,7 @@ function M.setup(user)
 		vim.keymap.set("n", km.open, M.open, { desc = "Mermaid: open preview URL" })
 	end
 
-	-- Autoupdate only when NVim writes the source file
+	-- Auto-render only when NVim drives
 	if M.config.run_priority ~= "web" then
 		local grp = vim.api.nvim_create_augroup("MermaidPlaygroundAuto", { clear = true })
 		for _, ev in ipairs(M.config.autoupdate_events or {}) do

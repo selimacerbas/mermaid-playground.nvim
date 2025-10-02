@@ -240,9 +240,8 @@
 
         async function registerPacks(list) {
             for (const name of list) {
-                try {
-                    await mermaid.registerIconPacks([{name, loader: () => fetch(`https://unpkg.com/@iconify-json/${name}@1/icons.json`).then(r => r.json())}]);
-                } catch (e) {console.warn('pack failed', name, e);}
+                try {await mermaid.registerIconPacks([{name, loader: () => fetch(`https://unpkg.com/@iconify-json/${name}@1/icons.json`).then(r => r.json())}]);}
+                catch (e) {console.warn('pack failed', name, e);}
             }
         }
 
@@ -314,40 +313,3 @@
 </body>
 
 </html>
-```
-
----
-
-## (Optional) lazy.nvim spec snippet
-
-```lua
-return {
-{
-"barrett-ruth/live-server.nvim",
-cmd = { "LiveServerStart", "LiveServerStop" },
-config = function() require("live-server").setup({ port = 5555 }) end,
-},
-{
-"selimacerbas/mermaid-playground.nvim",
-dependencies = { "barrett-ruth/live-server.nvim", "folke/which-key.nvim" },
-ft = { "markdown", "mdx", "mermaid", "mmd" },
-keys = {
-{ "<leader>mpp", function() require("mermaid-playground").toggle() end, desc = "Mermaid: Preview toggle" },
-    { "<leader>mpr", function() require("mermaid-playground").render_current_block() end, desc = "Mermaid: Render
-        current block" },
-        { "<leader>mpo", function() require("mermaid-playground").open() end, desc = "Mermaid: Open preview URL" },
-            },
-            config = function()
-            require("mermaid-playground").setup({
-            run_priority = "nvim",
-            select_block = "cursor",
-            autoupdate_events = { "TextChanged", "TextChangedI", "InsertLeave" },
-            mermaid = { theme = "dark", fit = "width", packs = { "logos" } },
-            live_server = { port = 5555 },
-            keymaps = { toggle = nil, render = nil, open = nil },
-            })
-            local okwk, wk = pcall(require, "which-key")
-            if okwk then wk.add({ { "<leader>mp", group = "Mermaid Playground" } }, { mode = "n" }) end
-                end,
-                },
-                }
