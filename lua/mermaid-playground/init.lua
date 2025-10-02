@@ -4,23 +4,16 @@ local M = {}
 M.config = {
 	run_priority = "nvim", -- 'nvim' | 'web' | 'both'
 	select_block = "cursor", -- 'cursor' | 'first'
-	fallback_to_first = false, -- if true and no cursor block, pick first mermaid block
+	fallback_to_first = true, -- render first block if cursor detection fails
 	autoupdate_events = { "TextChanged", "TextChangedI", "InsertLeave" },
-	output = {
-		file = "diagram.mmd",
-		html = "index.html",
-	},
-	mermaid = {
-		theme = "dark", -- 'dark' | 'light'
-		fit = "width", -- 'none' | 'width' | 'height'
-		packs = { "logos" }, -- pre-load packs in viewer
-	},
+	output = { file = "diagram.mmd", html = "index.html" },
+	mermaid = { theme = "dark", fit = "width", packs = { "logos" } },
 	live_server = { port = 5555 },
 	keymaps = { toggle = nil, render = nil, open = nil },
 
-	-- Workspace placement (keep repo clean by default)
+	-- Workspace (keep repo clean by default)
 	workspace_mode = "temp", -- 'temp' | 'project'
-	workspace_dir = ".mermaid-playground", -- used only when workspace_mode='project'
+	workspace_dir = ".mermaid-playground",
 
 	-- Project root resolution
 	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
@@ -38,14 +31,6 @@ local function ensure_dir(path)
 	if vim.fn.isdirectory(path) == 0 then
 		vim.fn.mkdir(path, "p")
 	end
-end
-
-local function slice(tbl, i, j)
-	local res = {}
-	for k = i, j do
-		res[#res + 1] = tbl[k]
-	end
-	return res
 end
 
 local function buf_dir()
@@ -183,7 +168,7 @@ local function fence_open(line)
 	local len = #fence
 	local lang = nil
 	if trailing and #trailing > 0 then
-		lang = trailing:match("^%s*([%w%-%_]+)")
+		lang = trailing:match("^([%w_%-%.]+)")
 		if lang then
 			lang = lang:lower()
 		end
@@ -199,7 +184,7 @@ local function fence_close(line, char, len)
 	if fence:sub(1, 1) ~= char then
 		return false
 	end
-	return #fence >= len -- closing can be longer
+	return #fence >= len -- closing can be >= opening length
 end
 
 local function find_all_mermaid_blocks(lines)
@@ -220,11 +205,10 @@ local function find_all_mermaid_blocks(lines)
 			while i <= #lines and not fence_close(lines[i] or "", fo.char, fo.len) do
 				i = i + 1
 			end
-			local stop_i = i
-			if stop_i and stop_i >= start_i then
-				local body = table.concat(slice(lines, start_i + 1, stop_i - 1), "\n")
-				blocks[#blocks + 1] = { start = start_i, stop = stop_i, body = body }
-			end
+			local stop_i = math.min(i, #lines) -- inclusive
+			-- body is between fences; allow empty body (we still treat as a block)
+			local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
+			blocks[#blocks + 1] = { start = start_i, stop = stop_i, body = body }
 		else
 			i = i + 1
 		end
@@ -233,7 +217,7 @@ local function find_all_mermaid_blocks(lines)
 end
 
 local function block_at_cursor(blocks, cursor_lnum)
-	-- Inclusive boundaries: allow cursor on opening or closing fence.
+	-- Inclusive: cursor on opening or closing fence counts as inside
 	for _, b in ipairs(blocks) do
 		if cursor_lnum >= b.start and cursor_lnum <= b.stop then
 			return b
@@ -244,18 +228,12 @@ end
 
 -- Core ---------------------------------------------------------------
 function M.render_current_block()
-	local buf = vim.api.nvim_get_current_buf()
-	local ft = vim.bo[buf].filetype
-	if ft ~= "markdown" and ft ~= "md" and ft ~= "mermaid" and ft ~= "mdx" and ft ~= "mmd" then
-		vim.notify("[mermaid-playground] Not a Markdown/Mermaid buffer", vim.log.levels.WARN)
-		return
-	end
-
-	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
+	-- Read buffer unconditionally (no filetype gate)
+	local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based line
 	local blocks = find_all_mermaid_blocks(lines)
-	local chosen
 
+	local chosen
 	if M.config.select_block == "cursor" then
 		chosen = block_at_cursor(blocks, cur)
 		if not chosen and M.config.fallback_to_first then
@@ -265,13 +243,13 @@ function M.render_current_block()
 		chosen = blocks[1]
 	end
 
-	if not chosen or not chosen.body or chosen.body:gsub("%s+", "") == "" then
-		vim.notify("[mermaid-playground] No mermaid block under cursor", vim.log.levels.INFO)
+	if not chosen then
+		vim.notify("[mermaid-playground] No mermaid fenced block found (cursor or first).", vim.log.levels.INFO)
 		return
 	end
 
 	local dir, file = output_paths()
-	write_file(file, chosen.body)
+	write_file(file, chosen.body or "")
 	vim.notify("[mermaid-playground] wrote " .. file, vim.log.levels.DEBUG)
 end
 
@@ -308,12 +286,12 @@ end
 
 function M.start()
 	local dir = workspace_dir()
-	ensure_viewer() -- ensure index.html exists in workspace
+	ensure_viewer()
 	if M.config.run_priority ~= "web" then
-		M.render_current_block() -- write diagram.mmd from the current buffer
+		M.render_current_block()
 	end
-	ensure_server_started_with_root(dir) -- serve the workspace as root
-	open_url(M.preview_url()) -- open http://localhost:5555/index.html?...
+	ensure_server_started_with_root(dir)
+	open_url(M.preview_url())
 end
 
 function M.stop()
