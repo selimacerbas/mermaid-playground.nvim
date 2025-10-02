@@ -15,14 +15,12 @@ M.config = {
 		fit = "width", -- 'none' | 'width' | 'height'
 		packs = { "logos" }, -- pre-load packs in viewer
 	},
-	live_server = {
-		port = 5555,
-	},
+	live_server = { port = 5555 },
 	keymaps = { toggle = nil, render = nil, open = nil },
 
 	-- Workspace placement (keep repo clean by default)
 	workspace_mode = "temp", -- 'temp' | 'project'
-	workspace_dir = ".mermaid-playground", -- only used when workspace_mode='project'
+	workspace_dir = ".mermaid-playground", -- used only when workspace_mode='project'
 
 	-- Project root resolution
 	root_mode = "auto", -- 'auto' | 'git' | 'file' | 'cwd'
@@ -40,6 +38,14 @@ local function ensure_dir(path)
 	if vim.fn.isdirectory(path) == 0 then
 		vim.fn.mkdir(path, "p")
 	end
+end
+
+local function slice(tbl, i, j)
+	local res = {}
+	for k = i, j do
+		res[#res + 1] = tbl[k]
+	end
+	return res
 end
 
 local function buf_dir()
@@ -168,25 +174,21 @@ end
 
 -- Fence scanning ------------------------------------------------------
 local function fence_open(line)
-	-- matches ```mermaid or ``` mermaid or ```mermaid {...}
-	local fence, info = line:match("^%s*([`~]{3,})%s*(.+)$")
-	if not fence then
-		fence = line:match("^%s*([`~]{3,})%s*$")
-		info = fence and "" or nil
-	end
+	-- Matches: ```mermaid, ``` mermaid, ```mermaid {init:...}, ~~~ mermaid, etc.
+	local fence, trailing = line:match("^%s*([`~]{3,})%s*(.-)%s*$")
 	if not fence then
 		return nil
 	end
 	local char = fence:sub(1, 1)
 	local len = #fence
 	local lang = nil
-	if info and #info > 0 then
-		lang = info:match("^%s*([%w%-%_]+)")
+	if trailing and #trailing > 0 then
+		lang = trailing:match("^%s*([%w%-%_]+)")
 		if lang then
 			lang = lang:lower()
 		end
 	end
-	return { char = char, len = len, lang = lang, info = info or "" }
+	return { char = char, len = len, lang = lang, raw = trailing or "" }
 end
 
 local function fence_close(line, char, len)
@@ -197,27 +199,31 @@ local function fence_close(line, char, len)
 	if fence:sub(1, 1) ~= char then
 		return false
 	end
-	if #fence < len then
-		return false
-	end -- closing can be >= opening length
-	return true
+	return #fence >= len -- closing can be longer
 end
 
 local function find_all_mermaid_blocks(lines)
-	local blocks = {}
-	local i = 1
+	local blocks, i = {}, 1
 	while i <= #lines do
 		local fo = fence_open(lines[i] or "")
-		if fo and (fo.lang == "mermaid" or (fo.info and fo.info:lower():match("^%s*mermaid[%s{]"))) then
+		local is_mermaid = false
+		if fo then
+			if fo.lang == "mermaid" then
+				is_mermaid = true
+			elseif fo.raw and fo.raw:lower():match("^%s*mermaid[%s{]") then
+				is_mermaid = true
+			end
+		end
+		if fo and is_mermaid then
 			local start_i = i
 			i = i + 1
 			while i <= #lines and not fence_close(lines[i] or "", fo.char, fo.len) do
 				i = i + 1
 			end
 			local stop_i = i
-			if stop_i and stop_i > start_i then
-				local body = table.concat(vim.list_slice(lines, start_i + 1, stop_i - 1), "\n")
-				table.insert(blocks, { start = start_i, stop = stop_i, body = body })
+			if stop_i and stop_i >= start_i then
+				local body = table.concat(slice(lines, start_i + 1, stop_i - 1), "\n")
+				blocks[#blocks + 1] = { start = start_i, stop = stop_i, body = body }
 			end
 		else
 			i = i + 1
@@ -226,9 +232,10 @@ local function find_all_mermaid_blocks(lines)
 	return blocks
 end
 
-local function block_under_cursor(blocks, cursor_lnum)
+local function block_at_cursor(blocks, cursor_lnum)
+	-- Inclusive boundaries: allow cursor on opening or closing fence.
 	for _, b in ipairs(blocks) do
-		if cursor_lnum > b.start and cursor_lnum < b.stop then
+		if cursor_lnum >= b.start and cursor_lnum <= b.stop then
 			return b
 		end
 	end
@@ -243,13 +250,14 @@ function M.render_current_block()
 		vim.notify("[mermaid-playground] Not a Markdown/Mermaid buffer", vim.log.levels.WARN)
 		return
 	end
+
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	local cur = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
 	local blocks = find_all_mermaid_blocks(lines)
-	local chosen = nil
+	local chosen
 
 	if M.config.select_block == "cursor" then
-		chosen = block_under_cursor(blocks, cur)
+		chosen = block_at_cursor(blocks, cur)
 		if not chosen and M.config.fallback_to_first then
 			chosen = blocks[1]
 		end
@@ -268,11 +276,10 @@ function M.render_current_block()
 end
 
 local function ensure_server_started_with_root(root)
-	-- Prefer starting with an explicit root argument; also chdir as a fallback.
+	-- Force serving the workspace as root (stop any previous, chdir, start)
 	if vim.fn.exists(":LiveServerStop") == 2 then
-		vim.cmd("LiveServerStop")
+		vim.cmd("silent! LiveServerStop")
 	end
-	-- try LiveServerStart {root}; if not supported on your version, chdir still makes it work
 	vim.cmd(("silent! execute 'cd %s'"):format(vim.fn.fnameescape(root)))
 	if vim.fn.exists(":LiveServerStart") == 2 then
 		vim.cmd(("silent! LiveServerStart %s"):format(vim.fn.fnameescape(root)))
