@@ -1,136 +1,153 @@
--- Tiny HTTP server (luv) that serves index.html and current.mmd on localhost
 local uv = vim.loop
+local M = {}
 
-local M = {
-  _server = nil,
-  _root   = nil,
-  _port   = nil,
+local state = {
+	server = nil,
+	port = 4070,
+	html_path = nil,
+	theme = "dark",
+	latest_code = "",
+	html_cache = nil,
 }
 
-local function http_date()
-  return os.date("!%a, %d %b %Y %H:%M:%S GMT")
-end
-
 local function read_file(path)
-  local fd = io.open(path, "rb")
-  if not fd then return nil end
-  local data = fd:read("*a")
-  fd:close()
-  return data
+	local fd = assert(io.open(path, "rb"))
+	local data = fd:read("*a")
+	fd:close()
+	return data
 end
 
-local function mime_for(path)
-  if path:match("%.html?$") then return "text/html; charset=utf-8" end
-  if path:match("%.mmd$")  then return "text/plain; charset=utf-8" end
-  if path:match("%.json$") then return "application/json; charset=utf-8" end
-  if path:match("%.svg$")  then return "image/svg+xml" end
-  if path:match("%.css$")  then return "text/css; charset=utf-8" end
-  if path:match("%.js$")   then return "text/javascript; charset=utf-8" end
-  return "text/plain; charset=utf-8"
+local function build_index_html()
+	local html = state.html_cache or read_file(state.html_path)
+	-- inject localStorage payload *before* the page's module script runs
+	local payload_tbl = {
+		src = state.latest_code or "",
+		theme = state.theme or "dark",
+	}
+	local ok, payload_json = pcall(vim.json.encode, payload_tbl)
+	if not ok then
+		payload_json = "{}"
+	end
+
+	local inject = ([[<script>(function(){try{var prev=JSON.parse(localStorage.getItem('mermaidPlayground')||'{}');
+  var next=Object.assign({},prev,%s);localStorage.setItem('mermaidPlayground',JSON.stringify(next));}catch(e){}})();</script>]]):format(
+		payload_json
+	)
+
+	-- Put into <head> for early execution
+	html = html:gsub("</head>", inject .. "</head>", 1)
+	return html
 end
 
-local function write_response(client, status, headers, body)
-  local reason = ({
-    [200]="OK",[204]="No Content",[304]="Not Modified",
-    [400]="Bad Request",[404]="Not Found",[405]="Method Not Allowed",
-    [500]="Internal Server Error"
-  })[status] or "OK"
-  headers = headers or {}
-  headers["Date"] = http_date()
-  headers["Server"] = "mermaid-playground.nvim"
-  headers["Connection"] = "close"
-  headers["Cache-Control"] = "no-store, max-age=0"
-  if body then headers["Content-Length"] = tostring(#body) end
-  local head = { ("HTTP/1.1 %d %s\r\n"):format(status, reason) }
-  for k,v in pairs(headers) do head[#head+1] = ("%s: %s\r\n"):format(k,v) end
-  head[#head+1] = "\r\n"
-  local payload = table.concat(head) .. (body or "")
-  client:write(payload, function() client:shutdown(); client:close() end)
+local function http_ok(body, content_type)
+	content_type = content_type or "text/html; charset=utf-8"
+	local headers = table.concat({
+		"HTTP/1.1 200 OK",
+		"Content-Type: " .. content_type,
+		"Content-Length: " .. tostring(#body),
+		"Cache-Control: no-cache, no-store, must-revalidate",
+		"Connection: close",
+		"\r\n",
+	}, "\r\n")
+	return headers .. body
 end
 
-local function url_decode(s)
-  s = s:gsub("+", " ")
-  s = s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h,16)) end)
-  return s
+local function http_not_found()
+	local body = "<h1>404</h1>"
+	local headers = table.concat({
+		"HTTP/1.1 404 Not Found",
+		"Content-Type: text/html; charset=utf-8",
+		"Content-Length: " .. tostring(#body),
+		"Connection: close",
+		"\r\n",
+	}, "\r\n")
+	return headers .. body
 end
 
-local function parse_request_line(line)
-  local m, path = line:match("^(%u+)%s+([^%s]+)")
-  return m, path
+local function parse_request_line(data)
+	local method, path = data:match("^(%u+)%s+([^%s]+)%s+HTTP")
+	return method or "GET", path or "/"
 end
 
-local function normalize_path(p)
-  p = p:gsub("?.*$", "")      -- strip query
-  p = p:gsub("#.*$", "")
-  if p == "/" then return "/index.html" end
-  return p
+local function handle_client(client)
+	client:read_start(function(err, chunk)
+		if err then
+			return
+		end
+		if not chunk then
+			client:shutdown()
+			client:close()
+			return
+		end
+
+		local req = chunk
+		if not req:find("\r\n\r\n", 1, true) then
+			-- wait for full headers (very simple; good enough for small GETs)
+			return
+		end
+
+		local _, path = parse_request_line(req)
+		local res
+		if path == "/" then
+			local body = build_index_html()
+			res = http_ok(body, "text/html; charset=utf-8")
+		elseif path == "/health" then
+			res = http_ok("ok", "text/plain; charset=utf-8")
+		else
+			res = http_not_found()
+		end
+
+		client:write(res)
+	end)
 end
 
-local function serve_path(client, root, p)
-  local path = root .. p
-  -- prevent ../ traversal
-  if path:find("%.%.") then
-    write_response(client, 400, nil, "Bad path\n")
-    return
-  end
-  local data = read_file(path)
-  if not data then
-    if p == "/favicon.ico" then
-      write_response(client, 204, { ["Content-Type"]="image/x-icon" }, nil)
-      return
-    end
-    write_response(client, 404, nil, "Not found\n")
-    return
-  end
-  write_response(client, 200, { ["Content-Type"]=mime_for(path) }, data)
+--- Start the tiny HTTP server if not running
+---@param opts {port: integer, html_path: string, theme?: string}
+---@return boolean ok, string|nil err
+function M.start(opts)
+	if state.server and not state.server:is_closing() then
+		-- already running; just refresh config
+		state.port = opts.port or state.port
+		state.html_path = opts.html_path or state.html_path
+		state.theme = opts.theme or state.theme
+		if not state.html_cache then
+			state.html_cache = read_file(state.html_path)
+		end
+		return true
+	end
+
+	state.port = opts.port or 4070
+	state.html_path = assert(opts.html_path, "html_path is required")
+	state.theme = opts.theme or state.theme
+	state.html_cache = read_file(state.html_path)
+
+	local server = uv.new_tcp()
+	local ok_bind, err = server:bind("127.0.0.1", state.port)
+	if not ok_bind then
+		return false, err or ("cannot bind to port " .. tostring(state.port))
+	end
+	server:listen(64, function(err2)
+		if err2 then
+			return
+		end
+		local client = uv.new_tcp()
+		server:accept(client)
+		handle_client(client)
+	end)
+
+	state.server = server
+	return true
 end
 
-local function on_client(sock)
-  local client = uv.new_tcp()
-  sock:accept(client)
-  local buffer = ""
-  client:read_start(function(err, chunk)
-    if err then
-      client:close()
-      return
-    end
-    if chunk then
-      buffer = buffer .. chunk
-      -- very simple header end detection
-      if buffer:find("\r\n\r\n", 1, true) or buffer:find("\n\n", 1, true) then
-        local first = buffer:match("^[^\r\n]+")
-        local method, raw_path = parse_request_line(first or "")
-        if method ~= "GET" then
-          write_response(client, 405, nil, "Only GET supported\n")
-          return
-        end
-        local p = normalize_path(url_decode(raw_path or "/"))
-        serve_path(client, M._root, p)
-      end
-    else
-      -- eof with no full headers; close
-      client:close()
-    end
-  end)
+function M.stop()
+	if state.server and not state.server:is_closing() then
+		pcall(state.server.close, state.server)
+	end
+	state.server = nil
 end
 
-function M.ensure_started(port, root)
-  if M._server and not M._server:is_closing() then
-    return true
-  end
-  local srv = uv.new_tcp()
-  local ok, err = srv:bind("127.0.0.1", port)
-  if not ok then
-    return false, ("cannot bind 127.0.0.1:%d (%s)"):format(port, err or "bind error")
-  end
-  local ok2, err2 = srv:listen(128, function() on_client(srv) end)
-  if not ok2 then
-    return false, ("listen failed on %d (%s)"):format(port, err2 or "listen error")
-  end
-  M._server = srv
-  M._root   = root
-  M._port   = port
-  return true
+function M.set_current_code(code)
+	state.latest_code = code or ""
 end
 
 return M
