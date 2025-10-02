@@ -202,11 +202,11 @@
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
         const qs = new URLSearchParams(location.search);
-        const srcParam = qs.get('src');            // when present, run in external mode
+        const srcParam = qs.get('src');            // if present, load external file (diagram.mmd)
         const packsQS = qs.get('packs') || '';
         const themeQS = qs.get('theme') || 'dark';
         const fitQS = qs.get('fit') || 'width';
-        const lockQS = qs.get('lock') || '0';   // when '1', hide editor controls
+        const lockQS = qs.get('lock') || '0';   // '1' hides editor controls
 
         const srcEl = document.getElementById('src');
         const packsEl = document.getElementById('packs');
@@ -226,12 +226,12 @@
         const zoomOutBtn = document.getElementById('zoomOut');
         const zoomResetBtn = document.getElementById('zoomReset');
 
-        let baseW = 0, baseH = 0, zoom = 1, fitMode = fitQS, currentSVG = '';
+        let baseW = 0, baseH = 0, zoom = 1, fitMode = fitQS;
 
         function showError(e) {errorsEl.textContent = (e?.message || String(e)); errorsEl.classList.remove('hidden');}
         function clearError() {errorsEl.textContent = ''; errorsEl.classList.add('hidden');}
         function tokens(v) {return v.split(',').map(s => s.trim()).filter(Boolean);}
-        function detectPacks(src) {const re =\\b([a - z0 - 9 -] +): [a - z0 - 9 -] +\\b / gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
+        function detectPacks(src) {const re = /\\b([a-z0-9-]+):[a-z0-9-]+\\b/gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
         function parseVB(svg) {const vb = svg.getAttribute('viewBox'); if (!vb) return null; const p = vb.trim().split(/\\s+/).map(Number); return p.length === 4 ? {w: p[2], h: p[3]} : null;}
         function applyZoom() {const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return; svg.removeAttribute('style'); svg.setAttribute('width', String(Math.round(baseW * zoom))); svg.setAttribute('height', String(Math.round(baseH * zoom))); zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;}
         function computeFit() {const cw = panzoom.clientWidth || baseW; const ch = panzoom.clientHeight || baseH; if (fitMode === 'width') zoom = cw / baseW; else if (fitMode === 'height') zoom = ch / baseH; zoom = Math.min(8, Math.max(.1, zoom)); applyZoom();}
@@ -240,8 +240,9 @@
 
         async function registerPacks(list) {
             for (const name of list) {
-                try {await mermaid.registerIconPacks([{name, loader: () => fetch(`https://unpkg.com/@iconify-json/${name}@1/icons.json`).then(r => r.json())}]);}
-                catch (e) {console.warn('pack failed', name, e);}
+                try {
+                    await mermaid.registerIconPacks([{name, loader: () => fetch(`https://unpkg.com/@iconify-json/${name}@1/icons.json`).then(r => r.json())}]);
+                } catch (e) {console.warn('pack failed', name, e);}
             }
         }
 
@@ -255,7 +256,6 @@
             previewHost.innerHTML = '';
             try {
                 const {svg} = await mermaid.render('m' + Math.random().toString(36).slice(2), src);
-                currentSVG = svg;
                 previewHost.innerHTML = svg;
                 const vb = parseVB(previewHost.querySelector('svg'));
                 baseW = vb ? vb.w : (Number(previewHost.querySelector('svg').getAttribute('width')) || 1200);
@@ -270,7 +270,7 @@
             await render(await r.text());
         }
 
-        // UI wiring
+        // UI
         zoomInBtn.onclick = () => {setFit('none'); zoom *= 1.2; applyZoom();};
         zoomOutBtn.onclick = () => {setFit('none'); zoom /= 1.2; applyZoom();};
         zoomResetBtn.onclick = () => {setFit('none'); zoom = 1; applyZoom();};
@@ -297,7 +297,7 @@
         // Boot
         (function () {
             applyTheme(themeQS);
-            if (srcParam) {             // External file mode
+            if (srcParam) {             // External file mode (NVim writes diagram.mmd)
                 editorCard.classList.add('hidden');
                 document.getElementById('grid').classList.add('collapsed');
                 if (lockQS === '1') toggleEditorBtn.classList.add('hidden');
