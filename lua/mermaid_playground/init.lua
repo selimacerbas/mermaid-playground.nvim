@@ -52,7 +52,7 @@ end
 
 local function open_once()
 	if M.cfg.auto_open and not M._opened_once then
-		util.open_url(("http://localhost:%d/?vim=1"):format(M.cfg.port))
+		util.open_url(("http://localhost:%d/"):format(M.cfg.port)) -- no ?vim=1 needed
 		M._opened_once = true
 	end
 end
