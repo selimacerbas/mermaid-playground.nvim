@@ -12,10 +12,6 @@
             --stroke: #1f2937;
             --fg: #e5e7eb;
             --muted: #9ca3af;
-            --warn: #f59e0b;
-            --danger: #ef4444;
-            --kbd-bg: #0b1229;
-            --kbd-border: #233052;
             --err-bg: rgba(239, 68, 68, .12);
             --err-border: rgba(239, 68, 68, .35);
             --err-fg: #fecaca
@@ -64,10 +60,6 @@
             border-radius: 10px;
             cursor: pointer;
             font-weight: 600
-        }
-
-        .btn.secondary {
-            background: #334155
         }
 
         .btn.ghost {
@@ -138,11 +130,34 @@
             border-radius: 10px;
             background: rgba(255, 255, 255, .02);
             max-height: 76vh;
-            cursor: grab
+            cursor: grab;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, .55) rgba(255, 255, 255, .06)
         }
 
         #panzoom.dragging {
             cursor: grabbing
+        }
+
+        #panzoom::-webkit-scrollbar {
+            width: 12px;
+            height: 12px
+        }
+
+        #panzoom::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, .06);
+            border-radius: 8px
+        }
+
+        #panzoom::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, .45);
+            border-radius: 8px;
+            border: 2px solid transparent;
+            background-clip: padding-box
+        }
+
+        #panzoom::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, .7)
         }
 
         #previewHost {
@@ -153,6 +168,15 @@
             display: block
         }
 
+        /* Hide ANY mermaid-rendered error artifacts inside the preview host */
+        #previewHost .error,
+        #previewHost .error-icon,
+        #previewHost .error-text,
+        #previewHost .messageText {
+            display: none !important
+        }
+
+        /* Non-blocking error chip */
         #errorChip {
             position: absolute;
             top: 8px;
@@ -188,11 +212,21 @@
             --stroke: #e5e7eb;
             --fg: #0b1020;
             --muted: #4b5563;
-            --kbd-bg: #f3f4f6;
-            --kbd-border: #e5e7eb;
             --err-bg: rgba(239, 68, 68, .08);
             --err-border: #fecaca;
             --err-fg: #7f1d1d
+        }
+
+        body[data-theme=light] #panzoom {
+            scrollbar-color: rgba(100, 116, 139, .6) rgba(0, 0, 0, .05)
+        }
+
+        body[data-theme=light] #panzoom::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, .05)
+        }
+
+        body[data-theme=light] #panzoom::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, .55)
         }
     </style>
 </head>
@@ -205,7 +239,7 @@
         <h1>Mermaid Architecture Preview</h1>
         <div class="spacer"></div>
         <span id="status" aria-live="polite"></span>
-        <button id="themeBtn" class="btn secondary" title="Toggle light/dark theme">Theme: Dark</button>
+        <button id="themeBtn" class="btn ghost" title="Toggle light/dark theme">Theme: Dark</button>
     </header>
 
     <div class="wrap">
@@ -256,7 +290,7 @@
         let lastDiagramText = null;
         let lastError = '';
         let zoom = 1;
-        let fitMode = 'none'; // 'none' | 'width' | 'height'
+        let fitMode = 'width'; // default to auto-fit width
         const loadedPacks = new Set();
         let pollTimer = null;
 
@@ -304,7 +338,7 @@
             fitMode = mode;
             fitWidthBtn.classList.toggle('active', fitMode === 'width');
             fitHeightBtn.classList.toggle('active', fitMode === 'height');
-            if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
+            computeFitZoom();
         }
 
         async function registerPack(nameOrUrl) {
@@ -332,14 +366,16 @@
                 const {svg} = await mermaid.render(id, text);
                 currentSVG = svg; lastGoodSVG = svg;
                 previewHost.innerHTML = svg;
+
                 const svgEl = previewHost.querySelector('svg');
                 const vb = svgEl && parseViewBox(svgEl);
                 if (vb) {baseW = vb.w; baseH = vb.h;} else {baseW = +svgEl.getAttribute('width') || 1200; baseH = +svgEl.getAttribute('height') || 800;}
-                if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
+                computeFitZoom();
                 clearError();
                 setStatus(`Updated ${nowTime()}`);
             } catch (e) {
-                if (lastGoodSVG && (!previewHost.querySelector('svg') || previewHost.innerHTML.trim() === '')) previewHost.innerHTML = lastGoodSVG;
+                // Always replace preview with last good (or clear) to avoid Mermaid's error SVG/text.
+                previewHost.innerHTML = lastGoodSVG || '';
                 showError(e?.message || e);
             }
         }
@@ -380,13 +416,13 @@
             applyTheme(next); renderFrom(lastDiagramText || '');
         }
 
-        // Zoom & fit events
-        zoomInBtn.addEventListener('click', () => {setFitMode('none'); zoom *= 1.2; applyZoomToSVG();});
-        zoomOutBtn.addEventListener('click', () => {setFitMode('none'); zoom /= 1.2; applyZoomToSVG();});
-        zoomResetBtn.addEventListener('click', () => {setFitMode('none'); zoom = 1; applyZoomToSVG();});
+        // Zoom & fit
+        zoomInBtn.addEventListener('click', () => {fitMode = 'none'; zoom *= 1.2; applyZoomToSVG();});
+        zoomOutBtn.addEventListener('click', () => {fitMode = 'none'; zoom /= 1.2; applyZoomToSVG();});
+        zoomResetBtn.addEventListener('click', () => {fitMode = 'none'; zoom = 1; applyZoomToSVG();});
         fitWidthBtn.addEventListener('click', () => setFitMode(fitMode === 'width' ? 'none' : 'width'));
         fitHeightBtn.addEventListener('click', () => setFitMode(fitMode === 'height' ? 'none' : 'height'));
-        panzoom.addEventListener('wheel', (e) => {if (e.ctrlKey || e.metaKey) {e.preventDefault(); const dir = e.deltaY > 0 ? -1 : 1; setFitMode('none'); zoom *= dir > 0 ? 1.1 : (1 / 1.1); applyZoomToSVG();} }, {passive: false});
+        panzoom.addEventListener('wheel', (e) => {if (e.ctrlKey || e.metaKey) {e.preventDefault(); const dir = e.deltaY > 0 ? -1 : 1; fitMode = 'none'; zoom *= dir > 0 ? 1.1 : (1 / 1.1); applyZoomToSVG();} }, {passive: false});
 
         // Drag to pan
         let isDragging = false, startX = 0, startY = 0, startL = 0, startT = 0;
@@ -404,14 +440,20 @@
                 setTimeout(() => URL.revokeObjectURL(a.href), 2000);
             } catch (e) {showError(e);}
         });
-        window.addEventListener('resize', () => {if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();});
+
+        // Auto-resize handling
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {fitMode === 'none' ? applyZoomToSVG() : computeFitZoom();}, 80);
+        });
 
         // Boot
         (async function boot() {
             applyTheme('dark');
             await sync(true);
             startPolling();
-            // initial fit to width for nicer default
+            // default to fit width for responsive behavior
             setFitMode('width');
         })();
 
