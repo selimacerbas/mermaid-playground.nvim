@@ -4,9 +4,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mermaid Architecture Playground (textarea edition)</title>
+    <title>Mermaid Architecture Preview</title>
     <style>
-        /* Default = DARK theme */
         :root {
             --bg: #0b1020;
             --panel: #0f172a;
@@ -15,26 +14,23 @@
             --muted: #9ca3af;
             --warn: #f59e0b;
             --danger: #ef4444;
-            --field-bg: #0b1229;
-            --field-border: #233052;
             --kbd-bg: #0b1229;
             --kbd-border: #233052;
-
-            --err-bg: rgba(239, 68, 68, 0.12);
-            --err-border: rgba(239, 68, 68, 0.35);
-            --err-fg: #fecaca;
+            --err-bg: rgba(239, 68, 68, .12);
+            --err-border: rgba(239, 68, 68, .35);
+            --err-fg: #fecaca
         }
 
         html,
         body {
-            height: 100%;
+            height: 100%
         }
 
         body {
             margin: 0;
             background: var(--bg);
             color: var(--fg);
-            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial
         }
 
         header {
@@ -43,63 +39,52 @@
             gap: .5rem;
             align-items: center;
             border-bottom: 1px solid var(--stroke);
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(255, 255, 255, .02);
             position: sticky;
             top: 0;
             backdrop-filter: blur(6px);
-            z-index: 2;
+            z-index: 2
         }
 
         header h1 {
             margin: 0;
             font-size: 1rem;
-            letter-spacing: .2px;
+            letter-spacing: .2px
         }
 
         .spacer {
-            flex: 1;
+            flex: 1
         }
 
         .btn {
             background: #1d4ed8;
-            color: white;
+            color: #fff;
             border: none;
             padding: .55rem .9rem;
             border-radius: 10px;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 600
         }
 
         .btn.secondary {
-            background: #334155;
+            background: #334155
         }
 
         .btn.ghost {
             background: transparent;
             border: 1px solid var(--stroke);
-            color: var(--fg);
+            color: var(--fg)
         }
 
         .btn.ghost.active {
             border-color: #1d4ed8;
-            box-shadow: 0 0 0 2px rgba(29, 78, 216, .25) inset;
+            box-shadow: 0 0 0 2px rgba(29, 78, 216, .25) inset
         }
 
         .wrap {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 1rem;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            transition: grid-template-columns .2s ease;
-        }
-
-        .grid.collapsed {
-            grid-template-columns: 1fr;
+            padding: 1rem
         }
 
         .card {
@@ -107,7 +92,7 @@
             border: 1px solid var(--stroke);
             border-radius: 14px;
             overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, .25)
         }
 
         .card h2 {
@@ -116,60 +101,11 @@
             margin: 0;
             padding: .8rem 1rem;
             border-bottom: 1px solid var(--stroke);
-            color: var(--muted);
+            color: var(--muted)
         }
 
         .body {
-            padding: .75rem;
-        }
-
-        textarea,
-        input[type="text"] {
-            width: 100%;
-            background: var(--field-bg);
-            color: var(--fg);
-            border: 1px solid var(--field-border);
-            border-radius: 10px;
-            padding: .75rem .85rem;
-            font-size: .95rem;
-            line-height: 1.45;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-            caret-color: var(--fg);
-        }
-
-        textarea {
-            min-height: 520px;
-            resize: vertical;
-        }
-
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .5rem;
-            align-items: center;
-            margin-bottom: .5rem;
-        }
-
-        .controls input[type="text"] {
-            flex: 1 1 320px;
-            min-width: 220px;
-        }
-
-        textarea::placeholder,
-        input::placeholder {
-            color: var(--muted);
-            opacity: .85;
-        }
-
-        .hint {
-            font-size: .85rem;
-            color: var(--muted);
-            margin-top: .4rem;
-        }
-
-        /* Preview & zoom */
-        #preview {
-            padding: .5rem;
+            padding: .75rem
         }
 
         .toolbar {
@@ -177,14 +113,22 @@
             gap: .4rem;
             align-items: center;
             padding: .5rem .5rem .0rem;
-            flex-wrap: wrap;
+            flex-wrap: wrap
         }
 
         .toolbar .sep {
             width: 1px;
             height: 28px;
             background: var(--stroke);
-            margin: 0 .25rem;
+            margin: 0 .25rem
+        }
+
+        .toolbar .grow {
+            flex: 1
+        }
+
+        #preview {
+            padding: .5rem
         }
 
         #panzoom {
@@ -192,31 +136,29 @@
             overflow: auto;
             border: 1px dashed var(--stroke);
             border-radius: 10px;
-            background: rgba(255, 255, 255, 0.02);
-            max-height: 70vh;
-            cursor: grab;
+            background: rgba(255, 255, 255, .02);
+            max-height: 76vh;
+            cursor: grab
         }
 
         #panzoom.dragging {
-            cursor: grabbing;
+            cursor: grabbing
         }
 
         #previewHost {
-            position: relative;
+            position: relative
         }
 
         .mermaid svg {
-            display: block;
+            display: block
         }
 
-        /* Compact, non-blocking error chip inside preview */
         #errorChip {
             position: absolute;
             top: 8px;
             right: 8px;
             max-width: min(520px, 60vw);
             pointer-events: none;
-            /* don't block clicks */
             background: var(--err-bg);
             border: 1px solid var(--err-border);
             color: var(--err-fg);
@@ -226,45 +168,31 @@
             line-height: 1.2;
             box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
             display: none;
-            z-index: 3;
-        }
-
-        #errorChip .msg {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: block;
+            z-index: 3
         }
 
         #status {
             font-size: .85rem;
-            color: var(--muted);
+            color: var(--muted)
         }
 
-        @media (max-width: 980px) {
-            .grid {
-                grid-template-columns: 1fr;
+        @media (max-width:980px) {
+            .wrap {
+                padding: .75rem
             }
         }
 
-        .hidden {
-            display: none !important;
-        }
-
-        /* LIGHT theme overrides */
-        body[data-theme="light"] {
+        body[data-theme=light] {
             --bg: #f7fafc;
-            --panel: #ffffff;
+            --panel: #fff;
             --stroke: #e5e7eb;
             --fg: #0b1020;
             --muted: #4b5563;
-            --field-bg: #ffffff;
-            --field-border: #d1d5db;
             --kbd-bg: #f3f4f6;
             --kbd-border: #e5e7eb;
-            --err-bg: rgba(239, 68, 68, 0.08);
+            --err-bg: rgba(239, 68, 68, .08);
             --err-border: #fecaca;
-            --err-fg: #7f1d1d;
+            --err-fg: #7f1d1d
         }
     </style>
 </head>
@@ -274,58 +202,31 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M4 7h16M4 12h16M4 17h16" stroke="#93c5fd" stroke-width="1.5" stroke-linecap="round" />
         </svg>
-        <h1>Mermaid Architecture Playground</h1>
+        <h1>Mermaid Architecture Preview</h1>
         <div class="spacer"></div>
+        <span id="status" aria-live="polite"></span>
         <button id="themeBtn" class="btn secondary" title="Toggle light/dark theme">Theme: Dark</button>
-        <button id="toggleEditor" class="btn secondary" title="Hide/show the editor">Hide editor</button>
     </header>
 
     <div class="wrap">
-        <!-- Start with editor collapsed by default -->
-        <div id="mainGrid" class="grid collapsed">
-            <!-- EDITOR PANEL -->
-            <div id="editorCard" class="card hidden">
-                <h2>Diagram source</h2>
-                <div class="body">
-                    <div class="controls">
-                        <label for="packs" class="sr-only" aria-hidden="true"
-                            style="position:absolute;left:-9999px;">Icon packs</label>
-                        <input id="packs" type="text"
-                            placeholder="Icon packs (comma-separated): e.g. logos, simple-icons, https://.../icons.json" />
-                        <button id="renderBtn" class="btn">Render</button>
-                        <button id="saveBtn" class="btn secondary" title="Save to browser storage">Save</button>
-                        <button id="exportSvgBtn" class="btn secondary" title="Export current preview as SVG">Export
-                            SVG</button>
-                        <button id="cleanIndentBtn" class="btn ghost" title="Trim common indentation">Clean
-                            indent</button>
-                    </div>
-                    <textarea id="src" spellcheck="false"
-                        placeholder="Write only the Mermaid diagram here (no ``` wrapper). Use packs like logos:google-cloud. Ctrl/Cmd+Enter = Render"></textarea>
-                    <div id="status" aria-live="polite"></div>
-                    <p class="hint">Tips: Add icon packs by name (e.g. <code class="kbd">logos</code>) or full Iconify
-                        <code class="kbd">icons.json</code> URLs. <code class="kbd">Ctrl/Cmd+Enter</code> to render.
-                    </p>
-                </div>
+        <div class="card">
+            <h2>Preview</h2>
+            <div class="toolbar">
+                <span>Zoom:</span>
+                <button id="zoomOut" class="btn ghost" title="Zoom out">−</button>
+                <button id="zoomReset" class="btn ghost" title="Reset zoom">100%</button>
+                <button id="zoomIn" class="btn ghost" title="Zoom in">+</button>
+                <div class="sep"></div>
+                <button id="fitWidth" class="btn ghost" title="Fit to width">Fit width</button>
+                <button id="fitHeight" class="btn ghost" title="Fit to height">Fit height</button>
+                <div class="grow"></div>
+                <button id="reloadBtn" class="btn ghost" title="Force reload from diagram.mmd">Reload</button>
+                <button id="exportSvgBtn" class="btn ghost" title="Export current SVG">Export SVG</button>
             </div>
-
-            <!-- PREVIEW PANEL -->
-            <div class="card">
-                <h2>Preview</h2>
-                <div class="toolbar">
-                    <span>Zoom:</span>
-                    <button id="zoomOut" class="btn ghost" title="Zoom out">−</button>
-                    <button id="zoomReset" class="btn ghost" title="Reset zoom">100%</button>
-                    <button id="zoomIn" class="btn ghost" title="Zoom in">+</button>
-                    <div class="sep"></div>
-                    <button id="fitWidth" class="btn ghost" title="Fit to width">Fit width</button>
-                    <button id="fitHeight" class="btn ghost" title="Fit to height">Fit height</button>
-                </div>
-                <div id="preview" class="body">
-                    <div id="panzoom">
-                        <div id="previewHost" class="mermaid"></div>
-                        <!-- Non-blocking error chip lives inside the preview scroll container -->
-                        <div id="errorChip"><span class="msg"></span></div>
-                    </div>
+            <div id="preview" class="body">
+                <div id="panzoom">
+                    <div id="previewHost" class="mermaid"></div>
+                    <div id="errorChip"><span class="msg"></span></div>
                 </div>
             </div>
         </div>
@@ -334,44 +235,33 @@
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 
-        // Safe lookup helper (prevents null access from breaking the app)
         const $ = (id) => document.getElementById(id);
-
-        const srcEl = $('src');
-        const packsEl = $('packs');
-        const renderBtn = $('renderBtn');
-        const saveBtn = $('saveBtn');
-        const exportSvgBtn = $('exportSvgBtn');
-        const cleanIndentBtn = $('cleanIndentBtn');
-
-        const toggleEditorBtn = $('toggleEditor');
-        const editorCard = $('editorCard');
-        const mainGrid = $('mainGrid');
-        const themeBtn = $('themeBtn');
-        const statusEl = $('status');
-
         const previewHost = $('previewHost');
-        const zoomOutBtn = $('zoomOut');
+        const panzoom = $('panzoom');
+        const statusEl = $('status');
+        const themeBtn = $('themeBtn');
         const zoomInBtn = $('zoomIn');
+        const zoomOutBtn = $('zoomOut');
         const zoomResetBtn = $('zoomReset');
         const fitWidthBtn = $('fitWidth');
         const fitHeightBtn = $('fitHeight');
-        const panzoom = $('panzoom');
-
+        const reloadBtn = $('reloadBtn');
+        const exportSvgBtn = $('exportSvgBtn');
         const errorChip = $('errorChip');
-        const errorMsgEl = errorChip ? errorChip.querySelector('.msg') : null;
+        const errorMsgEl = errorChip.querySelector('.msg');
 
-        let baseW = 0, baseH = 0; // intrinsic svg size
+        let baseW = 0, baseH = 0;
         let currentSVG = '';
         let lastGoodSVG = '';
+        let lastDiagramText = null;
         let lastError = '';
         let zoom = 1;
         let fitMode = 'none'; // 'none' | 'width' | 'height'
         const loadedPacks = new Set();
+        let pollTimer = null;
 
-        // --- Helpers
-        const tokens = (value) => value.split(',').map(s => s.trim()).filter(Boolean);
         const setStatus = (text) => {if (statusEl) statusEl.textContent = text || '';};
+        const nowTime = () => new Date().toLocaleTimeString();
 
         function compressError(raw) {
             const s = String(raw || '');
@@ -379,282 +269,153 @@
             return first.replace(/\s*mermaid version\s*\d+(?:\.\d+)*\s*$/i, '').trim() || 'Invalid diagram.';
         }
         function showError(message) {
-            if (!errorChip || !errorMsgEl) return;
             const msg = compressError(message);
-            if (msg === lastError) return; // de-dupe
+            if (msg === lastError) return;
             lastError = msg;
-            errorMsgEl.textContent = `⚠️ ${msg} (auto-refreshing…)`;
+            errorMsgEl.textContent = `⚠️ ${msg}`;
             errorChip.style.display = 'block';
         }
         function clearError() {
             lastError = '';
-            if (errorChip) errorChip.style.display = 'none';
-            if (errorMsgEl) errorMsgEl.textContent = '';
+            errorChip.style.display = 'none';
+            errorMsgEl.textContent = '';
         }
-
-        function dedentBlock(text) {
-            const lines = text.replace(/\r\n?/g, '\n').split('\n');
-            const nonEmpty = lines.filter(l => l.trim().length);
-            if (!nonEmpty.length) return text;
-            const indents = nonEmpty.map(l => (l.match(/^\s*/)[0] || '').length);
-            const minIndent = Math.min(...indents);
-            if (minIndent === 0) return text;
-            return lines.map(l => l.slice(Math.min(minIndent, l.length))).join('\n');
-        }
-
-        function detectPacksFromSource(src) {
-            const re = /\b([a-z0-9-]+):[a-z0-9-]+\b/gi;
-            const names = new Set();
-            let m;
-            while ((m = re.exec(src))) names.add(m[1].toLowerCase());
-            return Array.from(names);
-        }
-
-        async function registerPack(nameOrUrl) {
-            if (loadedPacks.has(nameOrUrl)) return;
-            const isUrl = /^(https?:)?\/\//i.test(nameOrUrl);
-            let name = nameOrUrl; let loader;
-            if (isUrl) {
-                loader = () => fetch(nameOrUrl).then(r => r.json());
-                try {name = new URL(nameOrUrl, location.href).pathname.split('/').filter(Boolean).slice(-2, -1)[0] || nameOrUrl;} catch { }
-            } else {
-                loader = () => fetch(`https://unpkg.com/@iconify-json/${nameOrUrl}@1/icons.json`).then(r => r.json());
-            }
-            try {
-                await mermaid.registerIconPacks([{name, loader}]);
-                loadedPacks.add(nameOrUrl);
-            } catch (e) {
-                showError(`Icon pack failed: ${nameOrUrl}`);
-            }
-        }
-        async function ensurePacks(list) {for (const t of list) await registerPack(t);}
 
         function parseViewBox(svgEl) {
-            const vb = svgEl.getAttribute('viewBox');
-            if (!vb) return null;
-            const parts = vb.trim().split(/\s+/).map(Number);
-            return parts.length === 4 ? {x: parts[0], y: parts[1], w: parts[2], h: parts[3]} : null;
+            const vb = svgEl.getAttribute('viewBox'); if (!vb) return null;
+            const p = vb.trim().split(/\s+/).map(Number);
+            return p.length === 4 ? {w: p[2], h: p[3]} : null;
         }
 
         function applyZoomToSVG() {
-            const svg = previewHost && previewHost.querySelector('svg');
-            if (!svg || !baseW || !baseH || !zoomResetBtn) return;
+            const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return;
             svg.removeAttribute('style'); svg.removeAttribute('width'); svg.removeAttribute('height');
             svg.setAttribute('width', String(Math.max(1, Math.round(baseW * zoom))));
             svg.setAttribute('height', String(Math.max(1, Math.round(baseH * zoom))));
             zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
         }
         function computeFitZoom() {
-            if (!baseW || !baseH || !panzoom) return;
-            const cw = panzoom.clientWidth || baseW;
-            const ch = panzoom.clientHeight || baseH;
+            if (!baseW || !baseH) return;
+            const cw = panzoom.clientWidth || baseW; const ch = panzoom.clientHeight || baseH;
             if (fitMode === 'width') zoom = cw / baseW; else if (fitMode === 'height') zoom = ch / baseH;
-            zoom = Math.min(8, Math.max(0.1, zoom));
-            applyZoomToSVG();
+            zoom = Math.min(8, Math.max(0.1, zoom)); applyZoomToSVG();
         }
         function setFitMode(mode) {
             fitMode = mode;
-            try {
-                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
-                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, fitMode}));
-            } catch { }
-            if (fitWidthBtn) fitWidthBtn.classList.toggle('active', fitMode === 'width');
-            if (fitHeightBtn) fitHeightBtn.classList.toggle('active', fitMode === 'height');
+            fitWidthBtn.classList.toggle('active', fitMode === 'width');
+            fitHeightBtn.classList.toggle('active', fitMode === 'height');
             if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
         }
 
-        async function renderMain() {
-            if (!srcEl || !previewHost) return;
-            const src = srcEl.value.trim();
+        async function registerPack(nameOrUrl) {
+            if (loadedPacks.has(nameOrUrl)) return;
+            const isUrl = /^(https?:)?\/\//i.test(nameOrUrl);
+            let name = nameOrUrl, loader;
+            if (isUrl) {
+                loader = () => fetch(nameOrUrl).then(r => r.json());
+                try {name = new URL(nameOrUrl, location.href).pathname.split('/').filter(Boolean).slice(-2, -1)[0] || nameOrUrl;} catch { }
+            } else {
+                loader = () => fetch(`https://unpkg.com/@iconify-json/${nameOrUrl}@1/icons.json`).then(r => r.json());
+            }
+            try {await mermaid.registerIconPacks([{name, loader}]); loadedPacks.add(nameOrUrl);}
+            catch (e) {showError(`Icon pack failed: ${nameOrUrl}`);}
+        }
+        async function ensurePacks(list) {for (const t of list) await registerPack(t);}
+        function detectPacksFromSource(src) {const re = /\b([a-z0-9-]+):[a-z0-9-]+\b/gi; const s = new Set(); let m; while ((m = re.exec(src))) s.add(m[1].toLowerCase()); return [...s];}
+
+        async function renderFrom(text) {
+            if (!text || !previewHost) return;
             try {
-                const userPacks = tokens(packsEl ? (packsEl.value || '') : '');
-                const autoPacks = detectPacksFromSource(src);
-                const allPacks = Array.from(new Set([...userPacks, ...autoPacks]));
-                setStatus(allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '');
-
-                // Keep the last good SVG visible until a new good render succeeds.
-                await ensurePacks(allPacks);
+                const packs = detectPacksFromSource(text);
+                await ensurePacks(packs);
                 const id = 'arch' + Math.random().toString(36).slice(2);
-                const {svg} = await mermaid.render(id, src);
-
-                currentSVG = svg;
-                lastGoodSVG = svg;
+                const {svg} = await mermaid.render(id, text);
+                currentSVG = svg; lastGoodSVG = svg;
                 previewHost.innerHTML = svg;
-
                 const svgEl = previewHost.querySelector('svg');
                 const vb = svgEl && parseViewBox(svgEl);
-                if (vb) {baseW = vb.w; baseH = vb.h;}
-                else {baseW = Number(svgEl.getAttribute('width')) || 1200; baseH = Number(svgEl.getAttribute('height')) || 800;}
-
+                if (vb) {baseW = vb.w; baseH = vb.h;} else {baseW = +svgEl.getAttribute('width') || 1200; baseH = +svgEl.getAttribute('height') || 800;}
                 if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
                 clearError();
+                setStatus(`Updated ${nowTime()}`);
             } catch (e) {
-                // Keep showing last good SVG (if any) and display compact error chip
-                if (lastGoodSVG && (!previewHost.querySelector('svg') || previewHost.innerHTML.trim() === '')) {
-                    previewHost.innerHTML = lastGoodSVG;
-                }
-                showError(e && (e.message || e));
+                if (lastGoodSVG && (!previewHost.querySelector('svg') || previewHost.innerHTML.trim() === '')) previewHost.innerHTML = lastGoodSVG;
+                showError(e?.message || e);
             }
         }
 
-        function saveState() {
-            try {
-                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
-                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, src: srcEl?.value, packs: packsEl?.value, zoom, fitMode}));
-            } catch { }
-        }
-        function downloadSvg(svg, name) {
-            const blob = new Blob([svg], {type: 'image/svg+xml'});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob); a.download = name; a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-        }
-
-        // Theme handling
-        function applyTheme(theme) {
-            try {
-                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
-                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, theme}));
-            } catch { }
-            document.body.setAttribute('data-theme', theme);
-            if (themeBtn) themeBtn.textContent = `Theme: ${theme === 'dark' ? 'Dark' : 'Light'}`;
-            const mTheme = theme === 'dark' ? 'dark' : 'default';
-            mermaid.initialize({startOnLoad: false, theme: mTheme, securityLevel: 'strict'});
-        }
-        function toggleTheme() {
-            const current = document.body.getAttribute('data-theme') || 'dark';
-            const next = current === 'dark' ? 'light' : 'dark';
-            applyTheme(next);
-            renderMain();
-        }
-
-        // Zoom controls
-        function setZoom(next) {
-            zoom = Math.min(8, Math.max(0.1, next));
-            try {
-                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
-                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, zoom}));
-            } catch { }
-            applyZoomToSVG();
-        }
-        zoomInBtn && zoomInBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom * 1.2);});
-        zoomOutBtn && zoomOutBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom / 1.2);});
-        zoomResetBtn && zoomResetBtn.addEventListener('click', () => {setFitMode('none'); setZoom(1);});
-        fitWidthBtn && fitWidthBtn.addEventListener('click', () => setFitMode(fitMode === 'width' ? 'none' : 'width'));
-        fitHeightBtn && fitHeightBtn.addEventListener('click', () => setFitMode(fitMode === 'height' ? 'none' : 'height'));
-
-        // Ctrl/Cmd + wheel zoom
-        panzoom && panzoom.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                e.preventDefault();
-                const dir = e.deltaY > 0 ? -1 : 1;
-                setFitMode('none'); setZoom(zoom * (dir > 0 ? 1.1 : 1 / 1.1));
-            }
-        }, {passive: false});
-
-        // Drag to pan
-        let isDragging = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
-        panzoom && panzoom.addEventListener('mousedown', (e) => {
-            isDragging = true; panzoom.classList.add('dragging');
-            startX = e.clientX; startY = e.clientY;
-            startScrollLeft = panzoom.scrollLeft; startScrollTop = panzoom.scrollTop;
-        });
-        window.addEventListener('mousemove', (e) => {
-            if (!isDragging || !panzoom) return;
-            panzoom.scrollLeft = startScrollLeft - (e.clientX - startX);
-            panzoom.scrollTop = startScrollTop - (e.clientY - startY);
-        });
-        window.addEventListener('mouseup', () => {isDragging = false; panzoom && panzoom.classList.remove('dragging');});
-
-        // Buttons & keys
-        renderBtn && renderBtn.addEventListener('click', renderMain);
-        saveBtn && saveBtn.addEventListener('click', saveState);
-        exportSvgBtn && exportSvgBtn.addEventListener('click', async () => {
-            try {
-                const svgToSave = currentSVG || (await mermaid.render('tmp', srcEl?.value || '')).svg;
-                downloadSvg(svgToSave, 'diagram.svg');
-            } catch (e) {showError(e);}
-        });
-        cleanIndentBtn && cleanIndentBtn.addEventListener('click', () => {if (srcEl) srcEl.value = dedentBlock(srcEl.value);});
-        document.addEventListener('keydown', (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {e.preventDefault(); renderMain();}
-            if (e.key === 'Escape') {clearError();}
-        });
-
-        // Editor collapse/expand
-        function setEditorCollapsed(collapsed, rerender = true) {
-            if (!editorCard || !mainGrid || !toggleEditorBtn) return;
-            editorCard.classList.toggle('hidden', collapsed);
-            mainGrid.classList.toggle('collapsed', collapsed);
-            toggleEditorBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
-            try {
-                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
-                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, editorCollapsed: collapsed}));
-            } catch { }
-            if (rerender) setTimeout(() => {if (fitMode === 'none') renderMain(); else computeFitZoom();}, 30);
-        }
-        toggleEditorBtn && toggleEditorBtn.addEventListener('click', () => {
-            const nowHidden = !editorCard || !editorCard.classList.contains('hidden') ? false : true;
-            setEditorCollapsed(nowHidden, true);
-        });
-
-        // --- Live sync with diagram.mmd (polling) ---
-        let lastDiagramText = null;
-        let pollTimer = null;
-
-        async function fetchDiagramText() {
+        async function fetchDiagram() {
             try {
                 const resp = await fetch('diagram.mmd?ts=' + Date.now(), {cache: 'no-store'});
                 if (!resp.ok) return null;
-                return await resp.text();
-            } catch {
-                return null;
-            }
+                return (await resp.text()).replace(/\r\n?/g, '\n');
+            } catch {return null;}
         }
 
-        async function syncFromFile(initial = false) {
-            const txt = await fetchDiagramText();
-            if (txt == null || !srcEl) return;
-            const clean = txt.replace(/\r\n?/g, '\n');
-            if (initial || lastDiagramText === null || clean !== lastDiagramText) {
-                lastDiagramText = clean;
-                srcEl.value = clean;
-                setStatus(initial ? 'Loaded from diagram.mmd' : 'Updated from diagram.mmd');
-                await renderMain();
+        async function sync(initial = false) {
+            const txt = await fetchDiagram(); if (txt == null) return;
+            if (initial || lastDiagramText === null || txt !== lastDiagramText) {
+                lastDiagramText = txt;
+                await renderFrom(txt);
             }
         }
 
         function startPolling() {
             stopPolling();
-            const tick = () => {if (!document.hidden) syncFromFile(false);};
+            const tick = () => {if (!document.hidden) sync(false);};
             pollTimer = setInterval(tick, 800);
-            document.addEventListener('visibilitychange', () => {if (!document.hidden) syncFromFile(false);});
+            document.addEventListener('visibilitychange', () => {if (!document.hidden) sync(false);});
         }
         function stopPolling() {if (pollTimer) clearInterval(pollTimer); pollTimer = null;}
 
+        function applyTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            themeBtn.textContent = `Theme: ${theme === 'dark' ? 'Dark' : 'Light'}`;
+            const mTheme = theme === 'dark' ? 'dark' : 'default';
+            mermaid.initialize({startOnLoad: false, theme: mTheme, securityLevel: 'strict'});
+        }
+        function toggleTheme() {
+            const cur = document.body.getAttribute('data-theme') || 'dark';
+            const next = cur === 'dark' ? 'light' : 'dark';
+            applyTheme(next); renderFrom(lastDiagramText || '');
+        }
+
+        // Zoom & fit events
+        zoomInBtn.addEventListener('click', () => {setFitMode('none'); zoom *= 1.2; applyZoomToSVG();});
+        zoomOutBtn.addEventListener('click', () => {setFitMode('none'); zoom /= 1.2; applyZoomToSVG();});
+        zoomResetBtn.addEventListener('click', () => {setFitMode('none'); zoom = 1; applyZoomToSVG();});
+        fitWidthBtn.addEventListener('click', () => setFitMode(fitMode === 'width' ? 'none' : 'width'));
+        fitHeightBtn.addEventListener('click', () => setFitMode(fitMode === 'height' ? 'none' : 'height'));
+        panzoom.addEventListener('wheel', (e) => {if (e.ctrlKey || e.metaKey) {e.preventDefault(); const dir = e.deltaY > 0 ? -1 : 1; setFitMode('none'); zoom *= dir > 0 ? 1.1 : (1 / 1.1); applyZoomToSVG();} }, {passive: false});
+
+        // Drag to pan
+        let isDragging = false, startX = 0, startY = 0, startL = 0, startT = 0;
+        panzoom.addEventListener('mousedown', (e) => {isDragging = true; panzoom.classList.add('dragging'); startX = e.clientX; startY = e.clientY; startL = panzoom.scrollLeft; startT = panzoom.scrollTop;});
+        window.addEventListener('mousemove', (e) => {if (!isDragging) return; panzoom.scrollLeft = startL - (e.clientX - startX); panzoom.scrollTop = startT - (e.clientY - startY);});
+        window.addEventListener('mouseup', () => {isDragging = false; panzoom.classList.remove('dragging');});
+
+        // Toolbar extras
+        reloadBtn.addEventListener('click', () => sync(false));
+        exportSvgBtn.addEventListener('click', async () => {
+            try {
+                const svgToSave = currentSVG || (await mermaid.render('tmp', lastDiagramText || '')).svg;
+                const blob = new Blob([svgToSave], {type: 'image/svg+xml'});
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'diagram.svg'; a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+            } catch (e) {showError(e);}
+        });
+        window.addEventListener('resize', () => {if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();});
+
         // Boot
         (async function boot() {
-            // State + theme
-            let saved = {}; try {saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');} catch { }
-            if (packsEl && typeof saved.packs === 'string') packsEl.value = saved.packs;
-            if (saved.zoom) zoom = saved.zoom; if (saved.fitMode) fitMode = saved.fitMode;
-            applyTheme(saved.theme || 'dark');
-            if (srcEl && typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
-
-            // Editor collapsed by default (unless user chose otherwise previously)
-            const shouldCollapse = (typeof saved.editorCollapsed === 'boolean') ? saved.editorCollapsed : true;
-            setEditorCollapsed(shouldCollapse, false);
-
-            // Initial load from file, then polling
-            await syncFromFile(true);
+            applyTheme('dark');
+            await sync(true);
             startPolling();
-
-            // First render fallback (if no file)
-            await renderMain();
-            setTimeout(() => {setFitMode(fitMode); if (fitMode === 'none') applyZoomToSVG();}, 40);
+            // initial fit to width for nicer default
+            setFitMode('width');
         })();
 
-        themeBtn && themeBtn.addEventListener('click', toggleTheme);
+        themeBtn.addEventListener('click', toggleTheme);
     </script>
 
     <noscript>
