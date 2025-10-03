@@ -272,7 +272,7 @@
     </header>
 
     <div class="wrap">
-        <!-- Start with editor collapsed by default to avoid flicker -->
+        <!-- Start with editor collapsed by default -->
         <div id="mainGrid" class="grid collapsed">
             <!-- EDITOR PANEL -->
             <div id="editorCard" class="card hidden">
@@ -352,6 +352,7 @@
         let fitMode = 'none'; // 'none' | 'width' | 'height'
         const loadedPacks = new Set();
 
+        // --- Helpers
         function tokens(value) {return value.split(',').map(s => s.trim()).filter(Boolean);}
         function showError(message) {errorsEl.textContent = typeof message === 'string' ? message : (message?.message || String(message)); errorsEl.classList.remove('hidden');}
         function clearError() {errorsEl.textContent = ''; errorsEl.classList.add('hidden');}
@@ -459,18 +460,45 @@
         }
         toggleEditorBtn.addEventListener('click', () => {const nowHidden = !editorCard.classList.contains('hidden'); setEditorCollapsed(nowHidden, true);});
 
-        async function loadInitialFromFile() {
-            // Load diagram.mmd if present (served by live-server workspace)
+        // --- Live sync with diagram.mmd (polling) ---
+        let lastDiagramText = null;
+        let pollTimer = null;
+
+        async function fetchDiagramText() {
             try {
                 const resp = await fetch('diagram.mmd?ts=' + Date.now(), {cache: 'no-store'});
-                if (resp.ok) {
-                    const txt = await resp.text();
-                    if (txt && txt.trim()) {
-                        srcEl.value = txt;
-                        statusEl.textContent = 'Loaded from diagram.mmd';
-                    }
-                }
-            } catch (e) { /* ignore */}
+                if (!resp.ok) return null;
+                return await resp.text();
+            } catch {
+                return null;
+            }
+        }
+
+        async function syncFromFile(initial = false) {
+            const txt = await fetchDiagramText();
+            if (txt == null) return;
+
+            const clean = txt.replace(/\r\n?/g, '\n');
+            if (initial || lastDiagramText === null || clean !== lastDiagramText) {
+                lastDiagramText = clean;
+                srcEl.value = clean;
+                statusEl.textContent = initial ? 'Loaded from diagram.mmd' : 'Updated from diagram.mmd';
+                await renderMain();
+            }
+        }
+
+        function startPolling() {
+            stopPolling();
+            // Poll every 750ms; paused when tab hidden to save CPU.
+            const tick = () => {if (!document.hidden) syncFromFile(false);};
+            pollTimer = setInterval(tick, 750);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) syncFromFile(false);
+            });
+        }
+        function stopPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
         }
 
         // Boot
@@ -480,12 +508,16 @@
             if (saved.zoom) zoom = saved.zoom; if (saved.fitMode) fitMode = saved.fitMode;
             applyTheme(saved.theme || 'dark');
             if (typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
-            await loadInitialFromFile();
 
             // Default to editor collapsed unless user explicitly saved otherwise
             const shouldCollapse = (typeof saved.editorCollapsed === 'boolean') ? saved.editorCollapsed : true;
             setEditorCollapsed(shouldCollapse, false);
 
+            // Initial load from file, then begin polling for changes written by Neovim
+            await syncFromFile(true);
+            startPolling();
+
+            // First render (in case no file exists)
             renderMain();
             setTimeout(() => {setFitMode(fitMode); if (fitMode === 'none') applyZoomToSVG();}, 40);
         })();
