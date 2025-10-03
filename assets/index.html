@@ -209,37 +209,31 @@
             display: block;
         }
 
-        /* Improved, compact error chip */
-        #errors {
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            margin: .5rem .75rem 0;
-            padding: .5rem .65rem;
-            border-radius: 10px;
-            font-size: .85rem;
-            line-height: 1.2;
+        /* Compact, non-blocking error chip inside preview */
+        #errorChip {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            max-width: min(520px, 60vw);
+            pointer-events: none;
+            /* don't block clicks */
             background: var(--err-bg);
             border: 1px solid var(--err-border);
             color: var(--err-fg);
-            display: flex;
-            align-items: center;
-            gap: .5rem;
+            padding: .45rem .6rem;
+            border-radius: 10px;
+            font-size: .85rem;
+            line-height: 1.2;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, .25);
+            display: none;
+            z-index: 3;
         }
 
-        #errors .msg {
+        #errorChip .msg {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-        }
-
-        #errors .details {
-            font-size: .8em;
-            opacity: .85;
-        }
-
-        #errors.hidden {
-            display: none;
+            display: block;
         }
 
         #status {
@@ -268,7 +262,6 @@
             --field-border: #d1d5db;
             --kbd-bg: #f3f4f6;
             --kbd-border: #e5e7eb;
-
             --err-bg: rgba(239, 68, 68, 0.08);
             --err-border: #fecaca;
             --err-fg: #7f1d1d;
@@ -308,10 +301,6 @@
                     </div>
                     <textarea id="src" spellcheck="false"
                         placeholder="Write only the Mermaid diagram here (no ``` wrapper). Use packs like logos:google-cloud. Ctrl/Cmd+Enter = Render"></textarea>
-                    <div id="errors" class="hidden" role="alert" aria-live="polite">
-                        <span class="msg"></span>
-                        <span class="details"></span>
-                    </div>
                     <div id="status" aria-live="polite"></div>
                     <p class="hint">Tips: Add icon packs by name (e.g. <code class="kbd">logos</code>) or full Iconify
                         <code class="kbd">icons.json</code> URLs. <code class="kbd">Ctrl/Cmd+Enter</code> to render.
@@ -334,6 +323,8 @@
                 <div id="preview" class="body">
                     <div id="panzoom">
                         <div id="previewHost" class="mermaid"></div>
+                        <!-- Non-blocking error chip lives inside the preview scroll container -->
+                        <div id="errorChip"><span class="msg"></span></div>
                     </div>
                 </div>
             </div>
@@ -343,29 +334,32 @@
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 
-        const srcEl = document.getElementById('src');
-        const packsEl = document.getElementById('packs');
-        const renderBtn = document.getElementById('renderBtn');
-        const saveBtn = document.getElementById('saveBtn');
-        const exportSvgBtn = document.getElementById('exportSvgBtn');
-        const cleanIndentBtn = document.getElementById('cleanIndentBtn');
+        // Safe lookup helper (prevents null access from breaking the app)
+        const $ = (id) => document.getElementById(id);
 
-        const toggleEditorBtn = document.getElementById('toggleEditor');
-        const editorCard = document.getElementById('editorCard');
-        const mainGrid = document.getElementById('mainGrid');
-        const themeBtn = document.getElementById('themeBtn');
-        const errorsEl = document.getElementById('errors');
-        const errorMsgEl = errorsEl.querySelector('.msg');
-        const errorDetailsEl = errorsEl.querySelector('.details');
-        const statusEl = document.getElementById('status');
+        const srcEl = $('src');
+        const packsEl = $('packs');
+        const renderBtn = $('renderBtn');
+        const saveBtn = $('saveBtn');
+        const exportSvgBtn = $('exportSvgBtn');
+        const cleanIndentBtn = $('cleanIndentBtn');
 
-        const previewHost = document.getElementById('previewHost');
-        const zoomOutBtn = document.getElementById('zoomOut');
-        const zoomInBtn = document.getElementById('zoomIn');
-        const zoomResetBtn = document.getElementById('zoomReset');
-        const fitWidthBtn = document.getElementById('fitWidth');
-        const fitHeightBtn = document.getElementById('fitHeight');
-        const panzoom = document.getElementById('panzoom');
+        const toggleEditorBtn = $('toggleEditor');
+        const editorCard = $('editorCard');
+        const mainGrid = $('mainGrid');
+        const themeBtn = $('themeBtn');
+        const statusEl = $('status');
+
+        const previewHost = $('previewHost');
+        const zoomOutBtn = $('zoomOut');
+        const zoomInBtn = $('zoomIn');
+        const zoomResetBtn = $('zoomReset');
+        const fitWidthBtn = $('fitWidth');
+        const fitHeightBtn = $('fitHeight');
+        const panzoom = $('panzoom');
+
+        const errorChip = $('errorChip');
+        const errorMsgEl = errorChip ? errorChip.querySelector('.msg') : null;
 
         let baseW = 0, baseH = 0; // intrinsic svg size
         let currentSVG = '';
@@ -376,130 +370,212 @@
         const loadedPacks = new Set();
 
         // --- Helpers
-        function tokens(value) {return value.split(',').map(s => s.trim()).filter(Boolean);}
+        const tokens = (value) => value.split(',').map(s => s.trim()).filter(Boolean);
+        const setStatus = (text) => {if (statusEl) statusEl.textContent = text || '';};
+
         function compressError(raw) {
             const s = String(raw || '');
-            // Take first line and strip repeating mermaid version spam
             const first = s.split('\n').find(Boolean) || s;
-            return first.replace(/\\s*mermaid version\\s*\\d+(?:\\.\\d+)*\\s*$/i, '').trim() || 'Invalid diagram (will update when valid).';
+            return first.replace(/\s*mermaid version\s*\d+(?:\.\d+)*\s*$/i, '').trim() || 'Invalid diagram.';
         }
-        function showError(message, details) {
+        function showError(message) {
+            if (!errorChip || !errorMsgEl) return;
             const msg = compressError(message);
-            if (msg === lastError) return; // de-dupe noise
+            if (msg === lastError) return; // de-dupe
             lastError = msg;
-            errorMsgEl.textContent = `⚠️ ${msg}`;
-            errorDetailsEl.textContent = details ? `(${details})` : 'Waiting for a valid diagram…';
-            errorsEl.classList.remove('hidden');
+            errorMsgEl.textContent = `⚠️ ${msg} (auto-refreshing…)`;
+            errorChip.style.display = 'block';
         }
-        function clearError() {lastError = ''; errorsEl.classList.add('hidden'); errorMsgEl.textContent = ''; errorDetailsEl.textContent = '';}
-        function setStatus(text) {statusEl.textContent = text || '';}
+        function clearError() {
+            lastError = '';
+            if (errorChip) errorChip.style.display = 'none';
+            if (errorMsgEl) errorMsgEl.textContent = '';
+        }
 
         function dedentBlock(text) {
-            const lines = text.replace(/\\r\\n?/g, '\\n').split('\\n');
+            const lines = text.replace(/\r\n?/g, '\n').split('\n');
             const nonEmpty = lines.filter(l => l.trim().length);
             if (!nonEmpty.length) return text;
-            const indents = nonEmpty.map(l => (l.match(/^\\s*/)[0] || '').length);
+            const indents = nonEmpty.map(l => (l.match(/^\s*/)[0] || '').length);
             const minIndent = Math.min(...indents);
             if (minIndent === 0) return text;
-            return lines.map(l => l.slice(Math.min(minIndent, l.length))).join('\\n');
+            return lines.map(l => l.slice(Math.min(minIndent, l.length))).join('\n');
         }
 
-        function detectPacksFromSource(src) {const re = /\\b([a-z0-9-]+):[a-z0-9-]+\\b/gi; const names = new Set(); let m; while ((m = re.exec(src))) names.add(m[1].toLowerCase()); return Array.from(names);}
+        function detectPacksFromSource(src) {
+            const re = /\b([a-z0-9-]+):[a-z0-9-]+\b/gi;
+            const names = new Set();
+            let m;
+            while ((m = re.exec(src))) names.add(m[1].toLowerCase());
+            return Array.from(names);
+        }
 
         async function registerPack(nameOrUrl) {
             if (loadedPacks.has(nameOrUrl)) return;
-            const isUrl = /^(https?:)?\\/\\//i.test(nameOrUrl);
-                let name = nameOrUrl; let loader;
+            const isUrl = /^(https?:)?\/\//i.test(nameOrUrl);
+            let name = nameOrUrl; let loader;
             if (isUrl) {
-                loader = () => fetch(nameOrUrl).then(r => r.json()); try {name = new URL(nameOrUrl, location.href).pathname.split('/').filter(Boolean).slice(-2, -1)[0] || nameOrUrl;} catch { }
-            } else {loader = () => fetch(`https://unpkg.com/@iconify-json/${nameOrUrl}@1/icons.json`).then(r => r.json());}
-            try {await mermaid.registerIconPacks([{name, loader}]); loadedPacks.add(nameOrUrl);}
-            catch (e) {showError('Icon pack failed', e?.message || String(e));}
+                loader = () => fetch(nameOrUrl).then(r => r.json());
+                try {name = new URL(nameOrUrl, location.href).pathname.split('/').filter(Boolean).slice(-2, -1)[0] || nameOrUrl;} catch { }
+            } else {
+                loader = () => fetch(`https://unpkg.com/@iconify-json/${nameOrUrl}@1/icons.json`).then(r => r.json());
+            }
+            try {
+                await mermaid.registerIconPacks([{name, loader}]);
+                loadedPacks.add(nameOrUrl);
+            } catch (e) {
+                showError(`Icon pack failed: ${nameOrUrl}`);
+            }
         }
         async function ensurePacks(list) {for (const t of list) await registerPack(t);}
 
-        function parseViewBox(svgEl) {const vb = svgEl.getAttribute('viewBox'); if (!vb) return null; const parts = vb.trim().split(/\\s+/).map(Number); return parts.length === 4 ? {x: parts[0], y: parts[1], w: parts[2], h: parts[3]} : null;}
+        function parseViewBox(svgEl) {
+            const vb = svgEl.getAttribute('viewBox');
+            if (!vb) return null;
+            const parts = vb.trim().split(/\s+/).map(Number);
+            return parts.length === 4 ? {x: parts[0], y: parts[1], w: parts[2], h: parts[3]} : null;
+        }
 
         function applyZoomToSVG() {
-            const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return;
+            const svg = previewHost && previewHost.querySelector('svg');
+            if (!svg || !baseW || !baseH || !zoomResetBtn) return;
             svg.removeAttribute('style'); svg.removeAttribute('width'); svg.removeAttribute('height');
             svg.setAttribute('width', String(Math.max(1, Math.round(baseW * zoom))));
             svg.setAttribute('height', String(Math.max(1, Math.round(baseH * zoom))));
             zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
         }
         function computeFitZoom() {
-            if (!baseW || !baseH) return; const cw = panzoom.clientWidth || baseW; const ch = panzoom.clientHeight || baseH;
+            if (!baseW || !baseH || !panzoom) return;
+            const cw = panzoom.clientWidth || baseW;
+            const ch = panzoom.clientHeight || baseH;
             if (fitMode === 'width') zoom = cw / baseW; else if (fitMode === 'height') zoom = ch / baseH;
-            zoom = Math.min(8, Math.max(0.1, zoom)); applyZoomToSVG();
+            zoom = Math.min(8, Math.max(0.1, zoom));
+            applyZoomToSVG();
         }
         function setFitMode(mode) {
-            fitMode = mode; try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, fitMode}));} catch { }
-            fitWidthBtn.classList.toggle('active', fitMode === 'width'); fitHeightBtn.classList.toggle('active', fitMode === 'height');
+            fitMode = mode;
+            try {
+                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
+                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, fitMode}));
+            } catch { }
+            if (fitWidthBtn) fitWidthBtn.classList.toggle('active', fitMode === 'width');
+            if (fitHeightBtn) fitHeightBtn.classList.toggle('active', fitMode === 'height');
             if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
         }
 
         async function renderMain() {
+            if (!srcEl || !previewHost) return;
             const src = srcEl.value.trim();
-            const userPacks = tokens(packsEl.value || ''); const autoPacks = detectPacksFromSource(src);
-            const allPacks = Array.from(new Set([...userPacks, ...autoPacks]));
-            setStatus(allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '');
-
-            // Do not wipe current preview until a successful render; keeps the last good diagram visible.
             try {
+                const userPacks = tokens(packsEl ? (packsEl.value || '') : '');
+                const autoPacks = detectPacksFromSource(src);
+                const allPacks = Array.from(new Set([...userPacks, ...autoPacks]));
+                setStatus(allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '');
+
+                // Keep the last good SVG visible until a new good render succeeds.
                 await ensurePacks(allPacks);
                 const id = 'arch' + Math.random().toString(36).slice(2);
                 const {svg} = await mermaid.render(id, src);
+
                 currentSVG = svg;
                 lastGoodSVG = svg;
                 previewHost.innerHTML = svg;
-                const svgEl = previewHost.querySelector('svg'); const vb = parseViewBox(svgEl);
-                if (vb) {baseW = vb.w; baseH = vb.h;} else {baseW = Number(svgEl.getAttribute('width')) || 1200; baseH = Number(svgEl.getAttribute('height')) || 800;}
+
+                const svgEl = previewHost.querySelector('svg');
+                const vb = svgEl && parseViewBox(svgEl);
+                if (vb) {baseW = vb.w; baseH = vb.h;}
+                else {baseW = Number(svgEl.getAttribute('width')) || 1200; baseH = Number(svgEl.getAttribute('height')) || 800;}
+
                 if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
                 clearError();
             } catch (e) {
-                // Keep last good render, show compact, deduped error
-                if (lastGoodSVG && !previewHost.querySelector('svg')) {
+                // Keep showing last good SVG (if any) and display compact error chip
+                if (lastGoodSVG && (!previewHost.querySelector('svg') || previewHost.innerHTML.trim() === '')) {
                     previewHost.innerHTML = lastGoodSVG;
                 }
-                showError(e && (e.message || e), 'Will refresh automatically');
+                showError(e && (e.message || e));
             }
         }
 
-        function saveState() {try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, src: srcEl.value, packs: packsEl.value, zoom, fitMode}));} catch { } }
-        function downloadSvg(svg, name) {const blob = new Blob([svg], {type: 'image/svg+xml'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);}
+        function saveState() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
+                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, src: srcEl?.value, packs: packsEl?.value, zoom, fitMode}));
+            } catch { }
+        }
+        function downloadSvg(svg, name) {
+            const blob = new Blob([svg], {type: 'image/svg+xml'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = name; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        }
 
         // Theme handling
         function applyTheme(theme) {
-            try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, theme}));} catch { }
-            document.body.setAttribute('data-theme', theme); themeBtn.textContent = `Theme: ${theme === 'dark' ? 'Dark' : 'Light'}`; const mTheme = theme === 'dark' ? 'dark' : 'default'; mermaid.initialize({startOnLoad: false, theme: mTheme, securityLevel: 'strict'});
+            try {
+                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
+                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, theme}));
+            } catch { }
+            document.body.setAttribute('data-theme', theme);
+            if (themeBtn) themeBtn.textContent = `Theme: ${theme === 'dark' ? 'Dark' : 'Light'}`;
+            const mTheme = theme === 'dark' ? 'dark' : 'default';
+            mermaid.initialize({startOnLoad: false, theme: mTheme, securityLevel: 'strict'});
         }
-        function toggleTheme() {const current = document.body.getAttribute('data-theme') || 'dark'; const next = current === 'dark' ? 'light' : 'dark'; applyTheme(next); renderMain();}
+        function toggleTheme() {
+            const current = document.body.getAttribute('data-theme') || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+            renderMain();
+        }
 
         // Zoom controls
-        function setZoom(next) {zoom = Math.min(8, Math.max(0.1, next)); try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, zoom}));} catch { } applyZoomToSVG();}
-        zoomInBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom * 1.2);});
-        zoomOutBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom / 1.2);});
-        zoomResetBtn.addEventListener('click', () => {setFitMode('none'); setZoom(1);});
-        fitWidthBtn.addEventListener('click', () => setFitMode(fitMode === 'width' ? 'none' : 'width'));
-        fitHeightBtn.addEventListener('click', () => setFitMode(fitMode === 'height' ? 'none' : 'height'));
+        function setZoom(next) {
+            zoom = Math.min(8, Math.max(0.1, next));
+            try {
+                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
+                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, zoom}));
+            } catch { }
+            applyZoomToSVG();
+        }
+        zoomInBtn && zoomInBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom * 1.2);});
+        zoomOutBtn && zoomOutBtn.addEventListener('click', () => {setFitMode('none'); setZoom(zoom / 1.2);});
+        zoomResetBtn && zoomResetBtn.addEventListener('click', () => {setFitMode('none'); setZoom(1);});
+        fitWidthBtn && fitWidthBtn.addEventListener('click', () => setFitMode(fitMode === 'width' ? 'none' : 'width'));
+        fitHeightBtn && fitHeightBtn.addEventListener('click', () => setFitMode(fitMode === 'height' ? 'none' : 'height'));
 
         // Ctrl/Cmd + wheel zoom
-        panzoom.addEventListener('wheel', (e) => {if (e.ctrlKey || e.metaKey) {e.preventDefault(); const dir = e.deltaY > 0 ? -1 : 1; setFitMode('none'); setZoom(zoom * (dir > 0 ? 1.1 : 1 / 1.1));} }, {passive: false});
+        panzoom && panzoom.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const dir = e.deltaY > 0 ? -1 : 1;
+                setFitMode('none'); setZoom(zoom * (dir > 0 ? 1.1 : 1 / 1.1));
+            }
+        }, {passive: false});
+
         // Drag to pan
         let isDragging = false, startX = 0, startY = 0, startScrollLeft = 0, startScrollTop = 0;
-        panzoom.addEventListener('mousedown', (e) => {isDragging = true; panzoom.classList.add('dragging'); startX = e.clientX; startY = e.clientY; startScrollLeft = panzoom.scrollLeft; startScrollTop = panzoom.scrollTop;});
-        window.addEventListener('mousemove', (e) => {if (!isDragging) return; panzoom.scrollLeft = startScrollLeft - (e.clientX - startX); panzoom.scrollTop = startScrollTop - (e.clientY - startY);});
-        window.addEventListener('mouseup', () => {isDragging = false; panzoom.classList.remove('dragging');});
-
-        // Resize responsiveness
-        let resizeTimer; window.addEventListener('resize', () => {clearTimeout(resizeTimer); resizeTimer = setTimeout(() => {if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();}, 100);});
+        panzoom && panzoom.addEventListener('mousedown', (e) => {
+            isDragging = true; panzoom.classList.add('dragging');
+            startX = e.clientX; startY = e.clientY;
+            startScrollLeft = panzoom.scrollLeft; startScrollTop = panzoom.scrollTop;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging || !panzoom) return;
+            panzoom.scrollLeft = startScrollLeft - (e.clientX - startX);
+            panzoom.scrollTop = startScrollTop - (e.clientY - startY);
+        });
+        window.addEventListener('mouseup', () => {isDragging = false; panzoom && panzoom.classList.remove('dragging');});
 
         // Buttons & keys
-        renderBtn.addEventListener('click', renderMain);
-        saveBtn.addEventListener('click', saveState);
-        exportSvgBtn.addEventListener('click', async () => {try {const svgToSave = currentSVG || (await mermaid.render('tmp', srcEl.value)).svg; downloadSvg(svgToSave, 'diagram.svg');} catch (e) {showError(e);} });
-        cleanIndentBtn.addEventListener('click', () => {srcEl.value = dedentBlock(srcEl.value);});
-
+        renderBtn && renderBtn.addEventListener('click', renderMain);
+        saveBtn && saveBtn.addEventListener('click', saveState);
+        exportSvgBtn && exportSvgBtn.addEventListener('click', async () => {
+            try {
+                const svgToSave = currentSVG || (await mermaid.render('tmp', srcEl?.value || '')).svg;
+                downloadSvg(svgToSave, 'diagram.svg');
+            } catch (e) {showError(e);}
+        });
+        cleanIndentBtn && cleanIndentBtn.addEventListener('click', () => {if (srcEl) srcEl.value = dedentBlock(srcEl.value);});
         document.addEventListener('keydown', (e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {e.preventDefault(); renderMain();}
             if (e.key === 'Escape') {clearError();}
@@ -507,12 +583,20 @@
 
         // Editor collapse/expand
         function setEditorCollapsed(collapsed, rerender = true) {
-            editorCard.classList.toggle('hidden', collapsed); mainGrid.classList.toggle('collapsed', collapsed);
+            if (!editorCard || !mainGrid || !toggleEditorBtn) return;
+            editorCard.classList.toggle('hidden', collapsed);
+            mainGrid.classList.toggle('collapsed', collapsed);
             toggleEditorBtn.textContent = collapsed ? 'Show editor' : 'Hide editor';
-            try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, editorCollapsed: collapsed}));} catch { }
+            try {
+                const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');
+                localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, editorCollapsed: collapsed}));
+            } catch { }
             if (rerender) setTimeout(() => {if (fitMode === 'none') renderMain(); else computeFitZoom();}, 30);
         }
-        toggleEditorBtn.addEventListener('click', () => {const nowHidden = !editorCard.classList.contains('hidden'); setEditorCollapsed(nowHidden, true);});
+        toggleEditorBtn && toggleEditorBtn.addEventListener('click', () => {
+            const nowHidden = !editorCard || !editorCard.classList.contains('hidden') ? false : true;
+            setEditorCollapsed(nowHidden, true);
+        });
 
         // --- Live sync with diagram.mmd (polling) ---
         let lastDiagramText = null;
@@ -530,9 +614,8 @@
 
         async function syncFromFile(initial = false) {
             const txt = await fetchDiagramText();
-            if (txt == null) return;
-
-            const clean = txt.replace(/\\r\\n?/g, '\\n');
+            if (txt == null || !srcEl) return;
+            const clean = txt.replace(/\r\n?/g, '\n');
             if (initial || lastDiagramText === null || clean !== lastDiagramText) {
                 lastDiagramText = clean;
                 srcEl.value = clean;
@@ -544,37 +627,34 @@
         function startPolling() {
             stopPolling();
             const tick = () => {if (!document.hidden) syncFromFile(false);};
-            pollTimer = setInterval(tick, 800); // slightly slower to reduce churn
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) syncFromFile(false);
-            });
+            pollTimer = setInterval(tick, 800);
+            document.addEventListener('visibilitychange', () => {if (!document.hidden) syncFromFile(false);});
         }
-        function stopPolling() {
-            if (pollTimer) clearInterval(pollTimer);
-            pollTimer = null;
-        }
+        function stopPolling() {if (pollTimer) clearInterval(pollTimer); pollTimer = null;}
 
         // Boot
         (async function boot() {
+            // State + theme
             let saved = {}; try {saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}');} catch { }
-            if (typeof saved.packs === 'string') packsEl.value = saved.packs;
+            if (packsEl && typeof saved.packs === 'string') packsEl.value = saved.packs;
             if (saved.zoom) zoom = saved.zoom; if (saved.fitMode) fitMode = saved.fitMode;
             applyTheme(saved.theme || 'dark');
-            if (typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
+            if (srcEl && typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
 
-            // Default to editor collapsed unless user explicitly saved otherwise
+            // Editor collapsed by default (unless user chose otherwise previously)
             const shouldCollapse = (typeof saved.editorCollapsed === 'boolean') ? saved.editorCollapsed : true;
             setEditorCollapsed(shouldCollapse, false);
 
-            // Initial load from file, then begin polling for changes written by Neovim
+            // Initial load from file, then polling
             await syncFromFile(true);
             startPolling();
 
-            // First render (in case no file exists)
-            renderMain();
+            // First render fallback (if no file)
+            await renderMain();
             setTimeout(() => {setFitMode(fitMode); if (fitMode === 'none') applyZoomToSVG();}, 40);
         })();
-        themeBtn.addEventListener('click', toggleTheme);
+
+        themeBtn && themeBtn.addEventListener('click', toggleTheme);
     </script>
 
     <noscript>
