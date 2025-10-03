@@ -9,6 +9,11 @@ Preview **Mermaid** diagrams from Markdown — _instantly_ — in your browser.
 - Export SVG, zoom, fit-to-width/height, dark/light theme, nice error chip (no “boom” screens)
 
 ---
+## Demo
+
+![mermaid](docs/demo/mermaid.gif) 
+
+---
 
 ## ✨ Quick start (30 seconds)
 
