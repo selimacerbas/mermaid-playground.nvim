@@ -28,6 +28,9 @@ local function write_index_if_needed(dir)
 	local dst = dir .. "/" .. M.config.index_name
 	if M.config.copy_index_if_missing and not util.file_exists(dst) then
 		local src = util.resolve_asset("assets/index.html")
+		if not src then
+			error("Could not locate assets/index.html in runtimepath. Make sure the plugin ships it.")
+		end
 		util.copy_file(src, dst)
 	end
 	return dst
