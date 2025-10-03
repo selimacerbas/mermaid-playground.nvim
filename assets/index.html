@@ -14,7 +14,10 @@
             --muted: #9ca3af;
             --err-bg: rgba(239, 68, 68, .12);
             --err-border: rgba(239, 68, 68, .35);
-            --err-fg: #fecaca
+            --err-fg: #fecaca;
+            --scroll-track: rgba(255, 255, 255, .06);
+            --scroll-thumb: rgba(148, 163, 184, .45);
+            --scroll-thumb-hover: rgba(148, 163, 184, .7);
         }
 
         html,
@@ -132,32 +135,38 @@
             max-height: 76vh;
             cursor: grab;
             scrollbar-width: thin;
-            scrollbar-color: rgba(148, 163, 184, .55) rgba(255, 255, 255, .06)
+            scrollbar-color: var(--scroll-thumb) var(--scroll-track)
         }
 
         #panzoom.dragging {
             cursor: grabbing
         }
 
+        /* WebKit scrollbars (dark) */
         #panzoom::-webkit-scrollbar {
             width: 12px;
             height: 12px
         }
 
         #panzoom::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, .06);
+            background: var(--scroll-track);
             border-radius: 8px
         }
 
         #panzoom::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, .45);
+            background: var(--scroll-thumb);
             border-radius: 8px;
             border: 2px solid transparent;
             background-clip: padding-box
         }
 
         #panzoom::-webkit-scrollbar-thumb:hover {
-            background: rgba(148, 163, 184, .7)
+            background: var(--scroll-thumb-hover)
+        }
+
+        /* Hide arrow buttons to avoid bright arrows in dark mode */
+        #panzoom::-webkit-scrollbar-button {
+            display: none
         }
 
         #previewHost {
@@ -168,11 +177,8 @@
             display: block
         }
 
-        /* Hide ANY mermaid-rendered error artifacts inside the preview host */
-        #previewHost .error,
-        #previewHost .error-icon,
-        #previewHost .error-text,
-        #previewHost .messageText {
+        /* Hide ANY Mermaid error artifacts anywhere on the page (boom icon, text, etc.) */
+        :where(.error, .error-icon, .error-text, .errorText, .messageText) {
             display: none !important
         }
 
@@ -214,19 +220,10 @@
             --muted: #4b5563;
             --err-bg: rgba(239, 68, 68, .08);
             --err-border: #fecaca;
-            --err-fg: #7f1d1d
-        }
-
-        body[data-theme=light] #panzoom {
-            scrollbar-color: rgba(100, 116, 139, .6) rgba(0, 0, 0, .05)
-        }
-
-        body[data-theme=light] #panzoom::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, .05)
-        }
-
-        body[data-theme=light] #panzoom::-webkit-scrollbar-thumb {
-            background: rgba(100, 116, 139, .55)
+            --err-fg: #7f1d1d;
+            --scroll-track: rgba(0, 0, 0, .05);
+            --scroll-thumb: rgba(100, 116, 139, .55);
+            --scroll-thumb-hover: rgba(100, 116, 139, .8);
         }
     </style>
 </head>
@@ -252,7 +249,7 @@
                 <button id="zoomIn" class="btn ghost" title="Zoom in">+</button>
                 <div class="sep"></div>
                 <button id="fitWidth" class="btn ghost" title="Fit to width">Fit width</button>
-                <button id="fitHeight" class="btn ghost" title="Fit to height">Fit height</button>
+                <button id="fitHeight" class="btn ghost" title="Fit height">Fit height</button>
                 <div class="grow"></div>
                 <button id="reloadBtn" class="btn ghost" title="Force reload from diagram.mmd">Reload</button>
                 <button id="exportSvgBtn" class="btn ghost" title="Export current SVG">Export SVG</button>
@@ -297,6 +294,11 @@
         const setStatus = (text) => {if (statusEl) statusEl.textContent = text || '';};
         const nowTime = () => new Date().toLocaleTimeString();
 
+        /** Remove any “boom” error artifacts Mermaid may have injected anywhere */
+        function removeMermaidErrorArtifacts() {
+            document.querySelectorAll('.error,.error-icon,.error-text,.errorText,.messageText').forEach(n => n.remove());
+        }
+
         function compressError(raw) {
             const s = String(raw || '');
             const first = s.split('\n').find(Boolean) || s;
@@ -313,6 +315,7 @@
             lastError = '';
             errorChip.style.display = 'none';
             errorMsgEl.textContent = '';
+            removeMermaidErrorArtifacts();
         }
 
         function parseViewBox(svgEl) {
@@ -371,12 +374,13 @@
                 const vb = svgEl && parseViewBox(svgEl);
                 if (vb) {baseW = vb.w; baseH = vb.h;} else {baseW = +svgEl.getAttribute('width') || 1200; baseH = +svgEl.getAttribute('height') || 800;}
                 computeFitZoom();
-                clearError();
+                clearError();           // hide chip + purge any stray artifacts
                 setStatus(`Updated ${nowTime()}`);
             } catch (e) {
-                // Always replace preview with last good (or clear) to avoid Mermaid's error SVG/text.
+                // Replace preview with last good (or clear) to avoid Mermaid's error SVG/text.
                 previewHost.innerHTML = lastGoodSVG || '';
                 showError(e?.message || e);
+                removeMermaidErrorArtifacts(); // in case Mermaid injected anything
             }
         }
 
@@ -441,7 +445,7 @@
             } catch (e) {showError(e);}
         });
 
-        // Auto-resize handling
+        // Auto-resize handling (keeps fit mode when window changes)
         let resizeTimer = null;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
@@ -451,10 +455,10 @@
         // Boot
         (async function boot() {
             applyTheme('dark');
+            removeMermaidErrorArtifacts();
             await sync(true);
             startPolling();
-            // default to fit width for responsive behavior
-            setFitMode('width');
+            setFitMode('width'); // responsive default
         })();
 
         themeBtn.addEventListener('click', toggleTheme);
