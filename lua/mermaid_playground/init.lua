@@ -8,8 +8,7 @@ M.config = {
 	workspace_dir = ".mermaid-live", -- created in the project root (cwd)
 	index_name = "index.html",
 	diagram_name = "diagram.mmd",
-	url = "http://localhost:5555/index.html",
-	auto_open = true, -- open browser after start
+	url = "http://localhost:5555/index.html", -- (unused now; live-server opens the browser)
 	copy_index_if_missing = true, -- copy assets/index.html if missing
 }
 
@@ -56,49 +55,17 @@ local function extract_mermaid_under_cursor()
 	return fallback
 end
 
--- Run `fn` with the PROCESS cwd temporarily set to `dir`.
--- This ensures live-server.nvim (which spawns a job) serves from `.mermaid-live/`.
-local function with_process_cwd(dir, fn)
-	local prev = vim.loop.cwd()
-	local ok_change = pcall(vim.loop.chdir, dir)
-	if not ok_change then
-		-- Fallback to global :cd if libuv chdir fails for any reason
-		vim.cmd("cd " .. vim.fn.fnameescape(dir))
-	end
-	local ok, res = pcall(fn)
-	if ok_change then
-		pcall(vim.loop.chdir, prev)
-	else
-		vim.cmd("cd " .. vim.fn.fnameescape(prev))
-	end
-	if not ok then
-		error(res)
-	end
-	return res
-end
-
 function M.open()
 	local text = extract_mermaid_under_cursor()
 	local dir = ensure_workspace()
 	write_index_if_needed(dir)
 	write_diagram(dir, text)
 
-	-- start live-server from the workspace dir
-	with_process_cwd(dir, function()
-		pcall(vim.cmd, "LiveServerStop") -- avoid port-in-use if already running
-		vim.cmd("LiveServerStart")
-	end)
-
-	if M.config.auto_open then
-		-- small delay so the server is listening
-		vim.defer_fn(function()
-			if vim.ui and vim.ui.open then
-				pcall(vim.ui.open, M.config.url)
-			else
-				util.open_in_browser(M.config.url)
-			end
-		end, 400)
-	end
+	-- Start live-server explicitly in the WORKSPACE DIR so / serves our index.html.
+	-- Also avoid opening a second tab ourselves; live-server will open the browser.
+	local arg_dir = vim.fn.fnameescape(dir)
+	pcall(vim.cmd, "LiveServerStop " .. arg_dir) -- stop existing server for this dir, if any
+	vim.cmd("LiveServerStart " .. arg_dir)
 end
 
 function M.refresh()
@@ -109,7 +76,9 @@ function M.refresh()
 end
 
 function M.stop()
-	pcall(vim.cmd, "LiveServerStop")
+	local dir = ensure_workspace()
+	local arg_dir = vim.fn.fnameescape(dir)
+	pcall(vim.cmd, "LiveServerStop " .. arg_dir)
 end
 
 return M
