@@ -4,15 +4,27 @@ local util = require("mermaid_playground.util")
 
 local M = {}
 
+-- Resolve ~/.config (or $XDG_CONFIG_HOME) cross-platform, then append "mermaid-playground"
+local function default_workspace_dir()
+	local cfg = os.getenv("XDG_CONFIG_HOME")
+	if not cfg or #cfg == 0 then
+		local home = vim.loop.os_homedir() or vim.fn.expand("~")
+		cfg = vim.fs.joinpath(home, ".config")
+	end
+	return vim.fs.joinpath(cfg, "mermaid-playground")
+end
+
 M.config = {
-	workspace_dir = ".mermaid-live", -- created in the project cwd
+	-- GLOBAL workspace: ~/.config/mermaid-playground
+	workspace_dir = default_workspace_dir(),
+
 	index_name = "index.html",
 	diagram_name = "diagram.mmd",
 
-	-- Overwrite the served index.html on every :MermaidPreviewStart
-	overwrite_index_on_start = true,
+	-- Do NOT overwrite a user's global index.html by default
+	overwrite_index_on_start = false,
 
-	-- Auto refresh & debounce (reduces thrash while typing)
+	-- Auto refresh & debounce
 	auto_refresh = true,
 	auto_refresh_events = { "InsertLeave", "TextChanged", "TextChangedI", "BufWritePost" },
 	debounce_ms = 450,
@@ -31,8 +43,7 @@ M._server_running = false
 M._debounce_seq = 0
 
 local function ensure_workspace()
-	local root = vim.loop.cwd()
-	local dir = vim.fs.joinpath(root, M.config.workspace_dir)
+	local dir = M.config.workspace_dir or default_workspace_dir()
 	util.mkdirp(dir)
 	return dir
 end
@@ -87,10 +98,8 @@ end
 local function maybe_refresh_from_cursor(bufnr, silent)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-	-- try strict first (cursor must be inside the fenced block)
 	local text = extract_mermaid_under_cursor_strict(bufnr)
 	if (not text) or (#text == 0) then
-		-- fallback to nearest fenced block upwards
 		local ok_fallback, fb = pcall(ts.fallback_scan, bufnr)
 		if not ok_fallback or not fb or #fb == 0 then
 			return false
@@ -156,9 +165,10 @@ function M.start()
 
 	set_autocmds_for_buffer(bufnr)
 
+	-- Start live-server ONCE, serving the global workspace
 	if not M._server_running then
 		local arg_dir = vim.fn.fnameescape(dir)
-		vim.cmd("LiveServerStart " .. arg_dir) -- live-server opens the browser once
+		vim.cmd("LiveServerStart " .. arg_dir)
 		M._server_running = true
 	end
 end
