@@ -19,13 +19,13 @@ end
 
 local function ensure_workspace()
 	local root = vim.loop.cwd()
-	local dir = root .. "/" .. M.config.workspace_dir
+	local dir = vim.fs.joinpath(root, M.config.workspace_dir)
 	util.mkdirp(dir)
 	return dir
 end
 
 local function write_index_if_needed(dir)
-	local dst = dir .. "/" .. M.config.index_name
+	local dst = vim.fs.joinpath(dir, M.config.index_name)
 	if M.config.copy_index_if_missing and not util.file_exists(dst) then
 		local src = util.resolve_asset("assets/index.html")
 		if not src then
@@ -37,7 +37,7 @@ local function write_index_if_needed(dir)
 end
 
 local function write_diagram(dir, text)
-	local path = dir .. "/" .. M.config.diagram_name
+	local path = vim.fs.joinpath(dir, M.config.diagram_name)
 	util.write_text(path, text)
 	return path
 end
@@ -56,11 +56,21 @@ local function extract_mermaid_under_cursor()
 	return fallback
 end
 
-local function with_lcd(dir, fn)
-	local prev = vim.fn.getcwd()
-	vim.cmd("lcd " .. vim.fn.fnameescape(dir))
+-- Run `fn` with the PROCESS cwd temporarily set to `dir`.
+-- This ensures live-server.nvim (which spawns a job) serves from `.mermaid-live/`.
+local function with_process_cwd(dir, fn)
+	local prev = vim.loop.cwd()
+	local ok_change = pcall(vim.loop.chdir, dir)
+	if not ok_change then
+		-- Fallback to global :cd if libuv chdir fails for any reason
+		vim.cmd("cd " .. vim.fn.fnameescape(dir))
+	end
 	local ok, res = pcall(fn)
-	vim.cmd("lcd " .. vim.fn.fnameescape(prev))
+	if ok_change then
+		pcall(vim.loop.chdir, prev)
+	else
+		vim.cmd("cd " .. vim.fn.fnameescape(prev))
+	end
 	if not ok then
 		error(res)
 	end
@@ -74,7 +84,8 @@ function M.open()
 	write_diagram(dir, text)
 
 	-- start live-server from the workspace dir
-	with_lcd(dir, function()
+	with_process_cwd(dir, function()
+		pcall(vim.cmd, "LiveServerStop") -- avoid port-in-use if already running
 		vim.cmd("LiveServerStart")
 	end)
 
@@ -86,7 +97,7 @@ function M.open()
 			else
 				util.open_in_browser(M.config.url)
 			end
-		end, 300)
+		end, 400)
 	end
 end
 
