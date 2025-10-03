@@ -9,13 +9,14 @@ M.config = {
 	index_name = "index.html",
 	diagram_name = "diagram.mmd",
 
-	-- overwrite the served index.html on every :MermaidPreviewStart
+	-- Overwrite the served index.html on every :MermaidPreviewStart
 	overwrite_index_on_start = true,
 
-	-- Auto refresh settings
+	-- Auto refresh & debounce (reduces thrash while typing)
 	auto_refresh = true,
 	auto_refresh_events = { "InsertLeave", "TextChanged", "TextChangedI", "BufWritePost" },
-	notify_on_refresh = false, -- set true if you want a message on every refresh
+	debounce_ms = 450,
+	notify_on_refresh = false,
 }
 
 function M.setup(opts)
@@ -27,6 +28,7 @@ M._augroup = nil
 M._active_bufnr = nil
 M._last_text_by_buf = {}
 M._server_running = false
+M._debounce_seq = 0
 
 local function ensure_workspace()
 	local root = vim.loop.cwd()
@@ -75,7 +77,6 @@ local function extract_mermaid_under_cursor(bufnr)
 	if text and #text > 0 then
 		return text
 	end
-	-- fallback (scan file with regex) so auto-refresh still works even if TS fails
 	local fallback = ts.fallback_scan(bufnr)
 	if not fallback or #fallback == 0 then
 		error("No ```mermaid fenced code block found under (or above) the cursor")
@@ -85,9 +86,11 @@ end
 
 local function maybe_refresh_from_cursor(bufnr, silent)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+	-- try strict first (cursor must be inside the fenced block)
 	local text = extract_mermaid_under_cursor_strict(bufnr)
 	if (not text) or (#text == 0) then
-		-- Try fallback if cursor isn't exactly within a detected fenced node
+		-- fallback to nearest fenced block upwards
 		local ok_fallback, fb = pcall(ts.fallback_scan, bufnr)
 		if not ok_fallback or not fb or #fb == 0 then
 			return false
@@ -109,6 +112,17 @@ local function maybe_refresh_from_cursor(bufnr, silent)
 	return true
 end
 
+local function debounced_refresh(bufnr)
+	M._debounce_seq = M._debounce_seq + 1
+	local this_call = M._debounce_seq
+	vim.defer_fn(function()
+		if this_call ~= M._debounce_seq then
+			return
+		end
+		pcall(maybe_refresh_from_cursor, bufnr, true)
+	end, M.config.debounce_ms)
+end
+
 local function set_autocmds_for_buffer(bufnr)
 	if not M.config.auto_refresh then
 		return
@@ -123,10 +137,9 @@ local function set_autocmds_for_buffer(bufnr)
 			group = M._augroup,
 			buffer = bufnr,
 			callback = function()
-				-- Try to refresh silently; if not in/found a mermaid block, do nothing.
-				pcall(maybe_refresh_from_cursor, bufnr, true)
+				debounced_refresh(bufnr)
 			end,
-			desc = "Mermaid Playground auto-refresh",
+			desc = "Mermaid Playground auto-refresh (debounced)",
 		})
 	end
 end
@@ -141,13 +154,11 @@ function M.start()
 	write_diagram(dir, text)
 	M._last_text_by_buf[bufnr] = text
 
-	-- Set buffer-local autocmds for auto refresh
 	set_autocmds_for_buffer(bufnr)
 
-	-- Only start the server once; reuse the existing browser tab.
 	if not M._server_running then
 		local arg_dir = vim.fn.fnameescape(dir)
-		vim.cmd("LiveServerStart " .. arg_dir)
+		vim.cmd("LiveServerStart " .. arg_dir) -- live-server opens the browser once
 		M._server_running = true
 	end
 end

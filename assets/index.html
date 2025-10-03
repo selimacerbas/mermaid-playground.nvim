@@ -19,6 +19,10 @@
             --field-border: #233052;
             --kbd-bg: #0b1229;
             --kbd-border: #233052;
+
+            --err-bg: rgba(239, 68, 68, 0.12);
+            --err-border: rgba(239, 68, 68, 0.35);
+            --err-fg: #fecaca;
         }
 
         html,
@@ -43,6 +47,7 @@
             position: sticky;
             top: 0;
             backdrop-filter: blur(6px);
+            z-index: 2;
         }
 
         header h1 {
@@ -204,13 +209,42 @@
             display: block;
         }
 
-        code.kbd {
-            background: var(--kbd-bg);
-            border: 1px solid var(--kbd-border);
-            padding: .15rem .4rem;
-            border-radius: 6px;
-            font-size: .85em;
-            color: var(--fg);
+        /* Improved, compact error chip */
+        #errors {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            margin: .5rem .75rem 0;
+            padding: .5rem .65rem;
+            border-radius: 10px;
+            font-size: .85rem;
+            line-height: 1.2;
+            background: var(--err-bg);
+            border: 1px solid var(--err-border);
+            color: var(--err-fg);
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+
+        #errors .msg {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #errors .details {
+            font-size: .8em;
+            opacity: .85;
+        }
+
+        #errors.hidden {
+            display: none;
+        }
+
+        #status {
+            font-size: .85rem;
+            color: var(--muted);
         }
 
         @media (max-width: 980px) {
@@ -234,28 +268,10 @@
             --field-border: #d1d5db;
             --kbd-bg: #f3f4f6;
             --kbd-border: #e5e7eb;
-        }
 
-        /* Error & status panels */
-        #errors {
-            background: rgba(239, 68, 68, 0.12);
-            border: 1px solid rgba(239, 68, 68, 0.35);
-            color: #fecaca;
-            padding: .75rem .9rem;
-            border-radius: 10px;
-            font-size: .9rem;
-            white-space: pre-wrap;
-        }
-
-        body[data-theme="light"] #errors {
-            background: rgba(239, 68, 68, 0.08);
-            color: #7f1d1d;
-            border-color: #fecaca;
-        }
-
-        #status {
-            font-size: .85rem;
-            color: var(--muted);
+            --err-bg: rgba(239, 68, 68, 0.08);
+            --err-border: #fecaca;
+            --err-fg: #7f1d1d;
         }
     </style>
 </head>
@@ -292,7 +308,10 @@
                     </div>
                     <textarea id="src" spellcheck="false"
                         placeholder="Write only the Mermaid diagram here (no ``` wrapper). Use packs like logos:google-cloud. Ctrl/Cmd+Enter = Render"></textarea>
-                    <div id="errors" class="hidden" role="alert"></div>
+                    <div id="errors" class="hidden" role="alert" aria-live="polite">
+                        <span class="msg"></span>
+                        <span class="details"></span>
+                    </div>
                     <div id="status" aria-live="polite"></div>
                     <p class="hint">Tips: Add icon packs by name (e.g. <code class="kbd">logos</code>) or full Iconify
                         <code class="kbd">icons.json</code> URLs. <code class="kbd">Ctrl/Cmd+Enter</code> to render.
@@ -336,6 +355,8 @@
         const mainGrid = document.getElementById('mainGrid');
         const themeBtn = document.getElementById('themeBtn');
         const errorsEl = document.getElementById('errors');
+        const errorMsgEl = errorsEl.querySelector('.msg');
+        const errorDetailsEl = errorsEl.querySelector('.details');
         const statusEl = document.getElementById('status');
 
         const previewHost = document.getElementById('previewHost');
@@ -348,40 +369,56 @@
 
         let baseW = 0, baseH = 0; // intrinsic svg size
         let currentSVG = '';
+        let lastGoodSVG = '';
+        let lastError = '';
         let zoom = 1;
         let fitMode = 'none'; // 'none' | 'width' | 'height'
         const loadedPacks = new Set();
 
         // --- Helpers
         function tokens(value) {return value.split(',').map(s => s.trim()).filter(Boolean);}
-        function showError(message) {errorsEl.textContent = typeof message === 'string' ? message : (message?.message || String(message)); errorsEl.classList.remove('hidden');}
-        function clearError() {errorsEl.textContent = ''; errorsEl.classList.add('hidden');}
+        function compressError(raw) {
+            const s = String(raw || '');
+            // Take first line and strip repeating mermaid version spam
+            const first = s.split('\n').find(Boolean) || s;
+            return first.replace(/\\s*mermaid version\\s*\\d+(?:\\.\\d+)*\\s*$/i, '').trim() || 'Invalid diagram (will update when valid).';
+        }
+        function showError(message, details) {
+            const msg = compressError(message);
+            if (msg === lastError) return; // de-dupe noise
+            lastError = msg;
+            errorMsgEl.textContent = `⚠️ ${msg}`;
+            errorDetailsEl.textContent = details ? `(${details})` : 'Waiting for a valid diagram…';
+            errorsEl.classList.remove('hidden');
+        }
+        function clearError() {lastError = ''; errorsEl.classList.add('hidden'); errorMsgEl.textContent = ''; errorDetailsEl.textContent = '';}
+        function setStatus(text) {statusEl.textContent = text || '';}
 
         function dedentBlock(text) {
-            const lines = text.replace(/\r\n?/g, '\n').split('\n');
+            const lines = text.replace(/\\r\\n?/g, '\\n').split('\\n');
             const nonEmpty = lines.filter(l => l.trim().length);
             if (!nonEmpty.length) return text;
-            const indents = nonEmpty.map(l => (l.match(/^\s*/)[0] || '').length);
+            const indents = nonEmpty.map(l => (l.match(/^\\s*/)[0] || '').length);
             const minIndent = Math.min(...indents);
             if (minIndent === 0) return text;
-            return lines.map(l => l.slice(Math.min(minIndent, l.length))).join('\n');
+            return lines.map(l => l.slice(Math.min(minIndent, l.length))).join('\\n');
         }
 
-        function detectPacksFromSource(src) {const re = /\b([a-z0-9-]+):[a-z0-9-]+\b/gi; const names = new Set(); let m; while ((m = re.exec(src))) names.add(m[1].toLowerCase()); return Array.from(names);}
+        function detectPacksFromSource(src) {const re = /\\b([a-z0-9-]+):[a-z0-9-]+\\b/gi; const names = new Set(); let m; while ((m = re.exec(src))) names.add(m[1].toLowerCase()); return Array.from(names);}
 
         async function registerPack(nameOrUrl) {
             if (loadedPacks.has(nameOrUrl)) return;
-            const isUrl = /^(https?:)?\/\//i.test(nameOrUrl);
-            let name = nameOrUrl; let loader;
+            const isUrl = /^(https?:)?\\/\\//i.test(nameOrUrl);
+                let name = nameOrUrl; let loader;
             if (isUrl) {
                 loader = () => fetch(nameOrUrl).then(r => r.json()); try {name = new URL(nameOrUrl, location.href).pathname.split('/').filter(Boolean).slice(-2, -1)[0] || nameOrUrl;} catch { }
             } else {loader = () => fetch(`https://unpkg.com/@iconify-json/${nameOrUrl}@1/icons.json`).then(r => r.json());}
             try {await mermaid.registerIconPacks([{name, loader}]); loadedPacks.add(nameOrUrl);}
-            catch (e) {console.warn('Icon pack failed:', nameOrUrl, e); showError(`Icon pack failed: ${nameOrUrl} — ${e?.message || e}`);}
+            catch (e) {showError('Icon pack failed', e?.message || String(e));}
         }
         async function ensurePacks(list) {for (const t of list) await registerPack(t);}
 
-        function parseViewBox(svgEl) {const vb = svgEl.getAttribute('viewBox'); if (!vb) return null; const parts = vb.trim().split(/\s+/).map(Number); return parts.length === 4 ? {x: parts[0], y: parts[1], w: parts[2], h: parts[3]} : null;}
+        function parseViewBox(svgEl) {const vb = svgEl.getAttribute('viewBox'); if (!vb) return null; const parts = vb.trim().split(/\\s+/).map(Number); return parts.length === 4 ? {x: parts[0], y: parts[1], w: parts[2], h: parts[3]} : null;}
 
         function applyZoomToSVG() {
             const svg = previewHost.querySelector('svg'); if (!svg || !baseW || !baseH) return;
@@ -402,17 +439,30 @@
         }
 
         async function renderMain() {
-            clearError(); const src = srcEl.value.trim();
+            const src = srcEl.value.trim();
             const userPacks = tokens(packsEl.value || ''); const autoPacks = detectPacksFromSource(src);
-            const allPacks = Array.from(new Set([...userPacks, ...autoPacks])); statusEl.textContent = allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '';
-            await ensurePacks(allPacks);
-            previewHost.innerHTML = '';
+            const allPacks = Array.from(new Set([...userPacks, ...autoPacks]));
+            setStatus(allPacks.length ? `Using icon packs: ${allPacks.join(', ')}` : '');
+
+            // Do not wipe current preview until a successful render; keeps the last good diagram visible.
             try {
-                const id = 'arch' + Math.random().toString(36).slice(2); const {svg} = await mermaid.render(id, src);
-                currentSVG = svg; previewHost.innerHTML = svg; const svgEl = previewHost.querySelector('svg'); const vb = parseViewBox(svgEl);
+                await ensurePacks(allPacks);
+                const id = 'arch' + Math.random().toString(36).slice(2);
+                const {svg} = await mermaid.render(id, src);
+                currentSVG = svg;
+                lastGoodSVG = svg;
+                previewHost.innerHTML = svg;
+                const svgEl = previewHost.querySelector('svg'); const vb = parseViewBox(svgEl);
                 if (vb) {baseW = vb.w; baseH = vb.h;} else {baseW = Number(svgEl.getAttribute('width')) || 1200; baseH = Number(svgEl.getAttribute('height')) || 800;}
                 if (fitMode === 'none') applyZoomToSVG(); else computeFitZoom();
-            } catch (e) {showError(e);}
+                clearError();
+            } catch (e) {
+                // Keep last good render, show compact, deduped error
+                if (lastGoodSVG && !previewHost.querySelector('svg')) {
+                    previewHost.innerHTML = lastGoodSVG;
+                }
+                showError(e && (e.message || e), 'Will refresh automatically');
+            }
         }
 
         function saveState() {try {const saved = JSON.parse(localStorage.getItem('mermaidPlayground') || '{}'); localStorage.setItem('mermaidPlayground', JSON.stringify({...saved, src: srcEl.value, packs: packsEl.value, zoom, fitMode}));} catch { } }
@@ -449,7 +499,11 @@
         saveBtn.addEventListener('click', saveState);
         exportSvgBtn.addEventListener('click', async () => {try {const svgToSave = currentSVG || (await mermaid.render('tmp', srcEl.value)).svg; downloadSvg(svgToSave, 'diagram.svg');} catch (e) {showError(e);} });
         cleanIndentBtn.addEventListener('click', () => {srcEl.value = dedentBlock(srcEl.value);});
-        document.addEventListener('keydown', (e) => {if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {e.preventDefault(); renderMain();} });
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {e.preventDefault(); renderMain();}
+            if (e.key === 'Escape') {clearError();}
+        });
 
         // Editor collapse/expand
         function setEditorCollapsed(collapsed, rerender = true) {
@@ -478,20 +532,19 @@
             const txt = await fetchDiagramText();
             if (txt == null) return;
 
-            const clean = txt.replace(/\r\n?/g, '\n');
+            const clean = txt.replace(/\\r\\n?/g, '\\n');
             if (initial || lastDiagramText === null || clean !== lastDiagramText) {
                 lastDiagramText = clean;
                 srcEl.value = clean;
-                statusEl.textContent = initial ? 'Loaded from diagram.mmd' : 'Updated from diagram.mmd';
+                setStatus(initial ? 'Loaded from diagram.mmd' : 'Updated from diagram.mmd');
                 await renderMain();
             }
         }
 
         function startPolling() {
             stopPolling();
-            // Poll every 750ms; paused when tab hidden to save CPU.
             const tick = () => {if (!document.hidden) syncFromFile(false);};
-            pollTimer = setInterval(tick, 750);
+            pollTimer = setInterval(tick, 800); // slightly slower to reduce churn
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) syncFromFile(false);
             });
