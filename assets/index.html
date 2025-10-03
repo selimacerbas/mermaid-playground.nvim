@@ -162,6 +162,7 @@
             margin-top: .4rem;
         }
 
+        /* Preview & zoom */
         #preview {
             padding: .5rem;
         }
@@ -222,6 +223,7 @@
             display: none !important;
         }
 
+        /* LIGHT theme overrides */
         body[data-theme="light"] {
             --bg: #f7fafc;
             --panel: #ffffff;
@@ -234,6 +236,7 @@
             --kbd-border: #e5e7eb;
         }
 
+        /* Error & status panels */
         #errors {
             background: rgba(239, 68, 68, 0.12);
             border: 1px solid rgba(239, 68, 68, 0.35);
@@ -269,9 +272,10 @@
     </header>
 
     <div class="wrap">
-        <div id="mainGrid" class="grid">
+        <!-- Start with editor collapsed by default to avoid flicker -->
+        <div id="mainGrid" class="grid collapsed">
             <!-- EDITOR PANEL -->
-            <div id="editorCard" class="card">
+            <div id="editorCard" class="card hidden">
                 <h2>Diagram source</h2>
                 <div class="body">
                     <div class="controls">
@@ -456,7 +460,7 @@
         toggleEditorBtn.addEventListener('click', () => {const nowHidden = !editorCard.classList.contains('hidden'); setEditorCollapsed(nowHidden, true);});
 
         async function loadInitialFromFile() {
-            // A light bootstrap that prefers a project-provided diagram.mmd
+            // Load diagram.mmd if present (served by live-server workspace)
             try {
                 const resp = await fetch('diagram.mmd?ts=' + Date.now(), {cache: 'no-store'});
                 if (resp.ok) {
@@ -477,6 +481,11 @@
             applyTheme(saved.theme || 'dark');
             if (typeof saved.src === 'string' && saved.src.trim()) srcEl.value = saved.src;
             await loadInitialFromFile();
+
+            // Default to editor collapsed unless user explicitly saved otherwise
+            const shouldCollapse = (typeof saved.editorCollapsed === 'boolean') ? saved.editorCollapsed : true;
+            setEditorCollapsed(shouldCollapse, false);
+
             renderMain();
             setTimeout(() => {setFitMode(fitMode); if (fitMode === 'none') applyZoomToSVG();}, 40);
         })();
