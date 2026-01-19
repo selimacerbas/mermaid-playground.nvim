@@ -1,8 +1,9 @@
 # mermaid-playground.nvim
 
-Preview **Mermaid** diagrams from Markdown — _instantly_ — in your browser.
+Preview **Mermaid** diagrams from Markdown or standalone Mermaid files — _instantly_ — in your browser.
 
-- Uses the **fenced \` ```mermaid \`** block **under your cursor**
+- **Markdown**: Uses the **fenced \` ```mermaid \`** block **under your cursor**
+- **Mermaid files**: Supports standalone **`.mmd`** and **`.mermaid`** files (entire file content)
 - Writes the diagram to **`~/.config/mermaid-playground/diagram.mmd`** (global workspace)
 - Serves a minimal, beautiful **live preview** via [`live-server.nvim`](https://github.com/barrett-ruth/live-server.nvim)
 - **Auto-refreshes** on edit (debounced) and **reuses the same tab** (no tab spam)
@@ -50,7 +51,7 @@ npm i -g live-server
 
 3) **Use it**
 
-- Put your cursor **inside a fenced Mermaid block** in a Markdown file:
+- **For Markdown files**: Put your cursor **inside a fenced Mermaid block**:
 
   ```markdown
   ```mermaid
@@ -61,12 +62,43 @@ npm i -g live-server
   ```
   ```
 
-- Start preview: **`<leader>mps`**  
+- **For standalone Mermaid files**: Open any **`.mmd`** or **`.mermaid`** file with your Mermaid diagram content:
+
+  ```mermaid
+  graph TD
+    A[Start] --> B{Is it good?}
+    B -->|Yes| C[Ship it]
+    B -->|No| D[Fix it]
+  ```
+
+  > **Note**: For `.mmd` files, you may need to set the filetype manually with `:set ft=mermaid` or configure filetype detection in your Neovim config.
+
+- Start preview: **`<leader>mps`** (works in both Markdown and Mermaid files)  
 - Edit as you like; leaving insert or writing the buffer will **auto-refresh**.  
 - Force re-render: **`<leader>mpr`**  
 - Stop server: **`<leader>mpS`**
 
 > The first start opens your browser once. Subsequent refreshes **reuse the same tab**.
+
+---
+
+## 📁 File Type Support
+
+This plugin supports:
+- **Markdown files** with ```` ```mermaid ```` fenced code blocks
+- **Mermaid files** with `.mermaid` extension (usually auto-detected by Neovim)
+- **Mermaid files** with `.mmd` extension
+
+For `.mmd` files, you may want to add filetype detection to your Neovim configuration:
+
+```lua
+-- In your init.lua or after/ftdetect/mermaid.lua
+vim.filetype.add({
+  extension = {
+    mmd = "mermaid",
+  },
+})
+```
 
 ---
 
@@ -131,7 +163,7 @@ require("mermaid_playground").setup({
 })
 ```
 
-> Uses Tree-sitter to locate the fenced block under the cursor (with a regex fallback). Any fenced block labelled `mermaid` is supported.
+> Uses Tree-sitter to locate the fenced block under the cursor (with a regex fallback). Any fenced block labelled `mermaid` is supported. For standalone `.mmd` and `.mermaid` files, the entire file content is used.
 
 ---
 

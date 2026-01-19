@@ -83,11 +83,30 @@ local function extract_mermaid_under_cursor_strict(bufnr)
 	return nil
 end
 
+local function extract_mermaid_from_standalone_file(bufnr)
+	local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+	local content = table.concat(lines, "\n")
+	if not content or #content == 0 then
+		error("Mermaid file appears to be empty")
+	end
+	return content
+end
+
 local function extract_mermaid_under_cursor(bufnr)
+	local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
+
+	-- Handle standalone mermaid files (.mmd, .mermaid)
+	if filetype == "mermaid" or filetype == "mmd" then
+		return extract_mermaid_from_standalone_file(bufnr)
+	end
+
+	-- Handle markdown files with Tree-sitter
 	local text = extract_mermaid_under_cursor_strict(bufnr)
 	if text and #text > 0 then
 		return text
 	end
+
+	-- Fallback regex scan for markdown files
 	local fallback = ts.fallback_scan(bufnr)
 	if not fallback or #fallback == 0 then
 		error("No ```mermaid fenced code block found under (or above) the cursor")
@@ -98,13 +117,26 @@ end
 local function maybe_refresh_from_cursor(bufnr, silent)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-	local text = extract_mermaid_under_cursor_strict(bufnr)
-	if (not text) or (#text == 0) then
-		local ok_fallback, fb = pcall(ts.fallback_scan, bufnr)
-		if not ok_fallback or not fb or #fb == 0 then
+	local filetype = vim.api.nvim_buf_get_option(bufnr, "filetype")
+	local text
+
+	-- Handle standalone mermaid files (.mmd, .mermaid)
+	if filetype == "mermaid" or filetype == "mmd" then
+		local ok, result = pcall(extract_mermaid_from_standalone_file, bufnr)
+		if not ok or not result or #result == 0 then
 			return false
 		end
-		text = fb
+		text = result
+	else
+		-- Handle markdown files
+		text = extract_mermaid_under_cursor_strict(bufnr)
+		if (not text) or (#text == 0) then
+			local ok_fallback, fb = pcall(ts.fallback_scan, bufnr)
+			if not ok_fallback or not fb or #fb == 0 then
+				return false
+			end
+			text = fb
+		end
 	end
 
 	if M._last_text_by_buf[bufnr] == text then
