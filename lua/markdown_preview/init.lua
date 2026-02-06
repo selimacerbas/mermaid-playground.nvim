@@ -15,7 +15,7 @@ M.config = {
 	-- nil = per-buffer workspace (recommended); set a path to override
 	workspace_dir = nil,
 
-	overwrite_index_on_start = false,
+	overwrite_index_on_start = true,
 
 	auto_refresh = true,
 	auto_refresh_events = { "InsertLeave", "TextChanged", "TextChangedI", "BufWritePost" },
@@ -102,7 +102,9 @@ local function extract_mermaid_under_cursor(bufnr)
 end
 
 ---Get the content to write based on filetype.
----Markdown buffers: entire buffer. Others: mermaid block wrapped in fence.
+---Markdown buffers: entire buffer.
+---Mermaid files (.mmd, .mermaid): entire buffer wrapped in mermaid fence.
+---Others: mermaid block under cursor wrapped in fence.
 ---@param bufnr integer
 ---@return string
 local function get_content(bufnr)
@@ -111,7 +113,13 @@ local function get_content(bufnr)
 		local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 		return table.concat(lines, "\n")
 	end
-	-- Non-markdown: extract mermaid block, wrap in code fence
+	-- .mmd / .mermaid files: treat entire buffer as mermaid
+	local bufname = vim.api.nvim_buf_get_name(bufnr)
+	if bufname:match("%.mmd$") or bufname:match("%.mermaid$") then
+		local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+		return "```mermaid\n" .. table.concat(lines, "\n") .. "\n```\n"
+	end
+	-- Other filetypes: extract mermaid block under cursor, wrap in code fence
 	local mermaid_text = extract_mermaid_under_cursor(bufnr)
 	return "```mermaid\n" .. mermaid_text .. "\n```\n"
 end
@@ -208,7 +216,11 @@ function M.start()
 	local bufnr = vim.api.nvim_get_current_buf()
 	M._active_bufnr = bufnr
 
-	local text = get_content(bufnr)
+	local ok_content, text = pcall(get_content, bufnr)
+	if not ok_content then
+		vim.notify("Markdown Preview: " .. tostring(text), vim.log.levels.ERROR)
+		return
+	end
 	local dir = ensure_workspace(bufnr)
 	M._workspace_dir = dir
 

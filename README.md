@@ -88,7 +88,7 @@ require("markdown_preview").setup({
   index_name = "index.html",            -- workspace HTML file
   workspace_dir = nil,                  -- nil = per-buffer (recommended); set a path to override
 
-  overwrite_index_on_start = false,     -- copy plugin's index.html on every start if true
+  overwrite_index_on_start = true,      -- copy plugin's index.html on every start
 
   auto_refresh = true,                  -- auto-update on buffer changes
   auto_refresh_events = {               -- which events trigger refresh
@@ -97,6 +97,23 @@ require("markdown_preview").setup({
   debounce_ms = 300,                    -- debounce interval
   notify_on_refresh = false,            -- show notification on refresh
 })
+```
+
+---
+
+## Example
+
+```mermaid
+graph LR
+    A[Neovim Buffer] -->|write| B[content.md]
+    B -->|fs watch| C[live-server.nvim]
+    C -->|SSE| D[Browser]
+    D --> E[markdown-it]
+    D --> F[mermaid.js]
+    D --> G[highlight.js]
+    E --> H[Rendered Preview]
+    F --> H
+    G --> H
 ```
 
 ---

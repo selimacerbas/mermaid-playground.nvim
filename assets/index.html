@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="utf-8" />
@@ -8,7 +8,7 @@
 
     <!-- highlight.js theme (swapped dynamically for light mode) -->
     <link id="hljs-theme" rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
+        href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css" />
 
     <style>
         /* ── CSS Variables ─────────────────────────────────────────────── */
@@ -26,10 +26,14 @@
             --err-bg: rgba(239, 68, 68, .12);
             --err-border: rgba(239, 68, 68, .35);
             --err-fg: #fecaca;
-            --scroll-track: rgba(255, 255, 255, .06);
-            --scroll-thumb: rgba(148, 163, 184, .45);
-            --scroll-thumb-hover: rgba(148, 163, 184, .7);
+            --scroll-track: transparent;
+            --scroll-thumb: rgba(148, 163, 184, .35);
+            --scroll-thumb-hover: rgba(148, 163, 184, .6);
             --accent: #58a6ff;
+            --badge-bg: rgba(255, 255, 255, .06);
+            --badge-fg: #8b949e;
+            --skeleton: rgba(255, 255, 255, .04);
+            --skeleton-shine: rgba(255, 255, 255, .08);
         }
 
         [data-theme="light"] {
@@ -46,10 +50,14 @@
             --err-bg: rgba(239, 68, 68, .08);
             --err-border: #fecaca;
             --err-fg: #7f1d1d;
-            --scroll-track: rgba(0, 0, 0, .05);
-            --scroll-thumb: rgba(100, 116, 139, .55);
-            --scroll-thumb-hover: rgba(100, 116, 139, .8);
+            --scroll-track: transparent;
+            --scroll-thumb: rgba(100, 116, 139, .4);
+            --scroll-thumb-hover: rgba(100, 116, 139, .65);
             --accent: #0969da;
+            --badge-bg: rgba(0, 0, 0, .04);
+            --badge-fg: #656d76;
+            --skeleton: rgba(0, 0, 0, .04);
+            --skeleton-shine: rgba(0, 0, 0, .07);
         }
 
         /* ── Reset & base ──────────────────────────────────────────────── */
@@ -57,6 +65,11 @@
         *::before,
         *::after {
             box-sizing: border-box
+        }
+
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: var(--scroll-thumb) var(--scroll-track);
         }
 
         html,
@@ -78,42 +91,157 @@
             display: flex;
             align-items: center;
             gap: .6rem;
-            padding: .65rem 1.2rem;
+            padding: .55rem 1.2rem;
             background: var(--panel);
             border-bottom: 1px solid var(--stroke);
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
 
         header h1 {
             margin: 0;
-            font-size: .95rem;
+            font-size: .9rem;
             font-weight: 600;
             letter-spacing: .2px;
+        }
+
+        .header-icon {
+            display: flex;
+            align-items: center;
+            color: var(--fg-muted);
         }
 
         .spacer {
             flex: 1
         }
 
+        /* Connection dot */
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--fg-muted);
+            opacity: .4;
+            transition: all .3s;
+            flex-shrink: 0;
+        }
+
+        .status-dot.connected {
+            background: #3fb950;
+            opacity: 1;
+            box-shadow: 0 0 6px rgba(63, 185, 80, .5);
+        }
+
+        .status-dot.error {
+            background: #f85149;
+            opacity: 1;
+        }
+
+        #status {
+            font-size: .75rem;
+            color: var(--fg-muted);
+        }
+
         .btn {
             background: transparent;
             border: 1px solid var(--stroke);
-            color: var(--fg);
-            padding: .4rem .7rem;
+            color: var(--fg-muted);
+            padding: .35rem;
             border-radius: 8px;
             cursor: pointer;
             font-size: .82rem;
             font-weight: 500;
-            transition: border-color .15s, background .15s;
+            transition: border-color .15s, background .15s, color .15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
         }
 
         .btn:hover {
             background: rgba(127, 127, 127, .1);
+            color: var(--fg);
         }
 
-        #status {
-            font-size: .8rem;
-            color: var(--fg-muted);
+        .btn-text {
+            width: auto;
+            padding: .35rem .65rem;
+        }
+
+        /* ── Loading skeleton ─────────────────────────────────────────── */
+        .skeleton {
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .skeleton-line {
+            height: 14px;
+            border-radius: 6px;
+            background: var(--skeleton);
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .skeleton-line::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+
+        .skeleton-line:nth-child(1) {
+            width: 45%;
+            height: 28px;
+            margin-bottom: 20px;
+        }
+
+        .skeleton-line:nth-child(2) {
+            width: 90%
+        }
+
+        .skeleton-line:nth-child(3) {
+            width: 75%
+        }
+
+        .skeleton-line:nth-child(4) {
+            width: 85%
+        }
+
+        .skeleton-line:nth-child(5) {
+            width: 60%
+        }
+
+        .skeleton-line:nth-child(6) {
+            width: 0;
+            height: 8px
+        }
+
+        .skeleton-line:nth-child(7) {
+            width: 35%;
+            height: 22px;
+            margin-bottom: 16px
+        }
+
+        .skeleton-line:nth-child(8) {
+            width: 80%
+        }
+
+        .skeleton-line:nth-child(9) {
+            width: 70%
+        }
+
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%)
+            }
+
+            100% {
+                transform: translateX(100%)
+            }
         }
 
         /* ── Markdown content ──────────────────────────────────────────── */
@@ -121,6 +249,19 @@
             max-width: 900px;
             margin: 0 auto;
             padding: 2rem 2rem 4rem;
+            animation: fadeIn .2s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
         }
 
         #content>*:first-child {
@@ -256,6 +397,7 @@
 
         /* Code blocks */
         #content pre {
+            position: relative;
             background: var(--code-bg);
             border: 1px solid var(--stroke);
             border-radius: 8px;
@@ -270,8 +412,27 @@
             background: none;
             padding: 0;
             border-radius: 0;
-            font-size: .88em;
-            line-height: 1.5;
+            font-size: .85em;
+            line-height: 1.55;
+        }
+
+        /* Language badge on code blocks */
+        #content pre[data-lang]::before {
+            content: attr(data-lang);
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: .2em .6em;
+            font-size: .68rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--badge-fg);
+            background: var(--badge-bg);
+            border-bottom-left-radius: 6px;
+            border-top-right-radius: 7px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            font-weight: 500;
+            line-height: 1.4;
         }
 
         /* ── Mermaid diagrams ──────────────────────────────────────────── */
@@ -320,6 +481,11 @@
             opacity: 1
         }
 
+        .mermaid-block .mermaid-expand-btn:hover {
+            color: var(--fg);
+            background: rgba(127, 127, 127, .1);
+        }
+
         .mermaid-block .mermaid-error {
             padding: .6rem 1rem;
             font-size: .85rem;
@@ -330,8 +496,8 @@
             margin: .5rem;
         }
 
-        /* Hide Mermaid's built-in error artifacts */
-        .mermaid-block :where(.error, .error-icon, .error-text, .errorText, .messageText) {
+        /* Hide Mermaid's built-in error artifacts (NOT .messageText — used for sequence diagram labels) */
+        .mermaid-block :where(.error, .error-icon, .error-text, .errorText) {
             display: none !important
         }
 
@@ -399,44 +565,72 @@
     </style>
 </head>
 
-<body data-theme="dark">
+<body>
     <header>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
+        <span class="header-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.5" />
+                <path d="M7 15V9l2.5 3L12 9v6M16 12l2-3 2 3M16 12h4" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </span>
         <h1>Markdown Preview</h1>
         <div class="spacer"></div>
+        <div id="statusDot" class="status-dot" title="Disconnected"></div>
         <span id="status" aria-live="polite"></span>
-        <button id="themeBtn" class="btn" title="Toggle light/dark">Dark</button>
+        <button id="themeBtn" class="btn" title="Toggle light/dark">
+            <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path id="moonPath"
+                    d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </button>
     </header>
 
-    <div id="content">
-        <p style="color:var(--fg-muted)">Loading&hellip;</p>
+    <!-- Loading skeleton (replaced by content) -->
+    <div id="loadingSkeleton" class="skeleton">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
     </div>
+
+    <div id="content" style="display:none"></div>
 
     <!-- Fullscreen overlay for diagram zoom/pan -->
     <div id="overlay">
         <div id="overlay-toolbar">
             <span style="font-weight:600;font-size:.9rem">Diagram</span>
             <div class="sep"></div>
-            <span style="font-size:.82rem">Zoom:</span>
-            <button id="ovZoomOut" class="btn" title="Zoom out">&minus;</button>
-            <button id="ovZoomReset" class="btn" title="Reset zoom">100%</button>
-            <button id="ovZoomIn" class="btn" title="Zoom in">+</button>
+            <span style="font-size:.82rem;color:var(--fg-muted)">Zoom:</span>
+            <button id="ovZoomOut" class="btn" title="Zoom out">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <button id="ovZoomReset" class="btn btn-text" title="Reset zoom" style="font-size:.78rem">100%</button>
+            <button id="ovZoomIn" class="btn" title="Zoom in">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
             <div class="sep"></div>
-            <button id="ovFitWidth" class="btn" title="Fit to width">Fit width</button>
-            <button id="ovFitHeight" class="btn" title="Fit height">Fit height</button>
+            <button id="ovFitWidth" class="btn btn-text" title="Fit to width" style="font-size:.78rem">Fit width</button>
+            <button id="ovFitHeight" class="btn btn-text" title="Fit height" style="font-size:.78rem">Fit height</button>
             <div class="grow"></div>
-            <button id="ovExport" class="btn" title="Export SVG">Export SVG</button>
-            <button id="ovClose" class="btn" title="Close (Esc)">Close</button>
+            <button id="ovExport" class="btn btn-text" title="Export SVG" style="font-size:.78rem">Export SVG</button>
+            <button id="ovClose" class="btn" title="Close (Esc)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
         </div>
         <div id="overlay-panzoom"></div>
     </div>
 
-    <!-- CDN deps: markdown-it, morphdom, highlight.js -->
+    <!-- CDN deps: markdown-it, morphdom, highlight.js (browser build) -->
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/morphdom@2/dist/morphdom-umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
@@ -446,6 +640,8 @@
         const contentEl = $('content');
         const statusEl = $('status');
         const themeBtn = $('themeBtn');
+        const statusDot = $('statusDot');
+        const loadingSkeleton = $('loadingSkeleton');
 
         // Overlay refs
         const overlay = $('overlay');
@@ -458,10 +654,15 @@
         const ovExport = $('ovExport');
         const ovClose = $('ovClose');
 
+        // SVG paths for theme icons
+        const MOON_SVG = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+        const SUN_SVG = '<circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';
+
         // ── State ─────────────────────────────────────────────────────
         let lastContent = null;
         let currentTheme = 'dark';
         let mermaidIdCounter = 0;
+        let sseConnected = false;
         const loadedPacks = new Set();
 
         // Overlay state
@@ -472,18 +673,29 @@
         let ovDragging = false, ovStartX = 0, ovStartY = 0, ovStartL = 0, ovStartT = 0;
 
         const setStatus = (t) => { if (statusEl) statusEl.textContent = t || ''; };
-        const nowTime = () => new Date().toLocaleTimeString();
+        const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        function setConnectionState(state) {
+            statusDot.className = 'status-dot' + (state === 'connected' ? ' connected' : state === 'error' ? ' error' : '');
+            statusDot.title = state === 'connected' ? 'Connected' : state === 'error' ? 'Disconnected' : 'Connecting...';
+        }
+
+        function showContent() {
+            if (loadingSkeleton) loadingSkeleton.style.display = 'none';
+            contentEl.style.display = '';
+        }
 
         // ── Theme ─────────────────────────────────────────────────────
         function applyTheme(theme) {
             currentTheme = theme;
-            document.body.setAttribute('data-theme', theme);
-            themeBtn.textContent = theme === 'dark' ? 'Dark' : 'Light';
+            document.documentElement.setAttribute('data-theme', theme);
+            const themeIcon = $('themeIcon');
+            if (themeIcon) themeIcon.innerHTML = theme === 'dark' ? MOON_SVG : SUN_SVG;
             const hljsLink = $('hljs-theme');
             if (hljsLink) {
                 hljsLink.href = theme === 'dark'
-                    ? 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css'
-                    : 'https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css';
+                    ? 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css'
+                    : 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css';
             }
             mermaid.initialize({
                 startOnLoad: false,
@@ -494,29 +706,33 @@
 
         themeBtn.addEventListener('click', () => {
             applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
-            // Re-render mermaid blocks with new theme
             renderAllMermaidBlocks();
         });
 
         // ── Markdown-it setup ─────────────────────────────────────────
-        const md = window.markdownit({
+        if (!window.markdownit) {
+            console.error('[markdown-preview] markdown-it not loaded from CDN');
+            showContent();
+            contentEl.innerHTML = '<p style="color:var(--err-fg)">Failed to load markdown-it from CDN. Check your internet connection.</p>';
+        }
+        const md = (window.markdownit || function () { return { render: (t) => '<pre>' + t + '</pre>', utils: { escapeHtml: (s) => s } }; })({
             html: true,
             linkify: true,
             typographer: true,
             highlight: function (str, lang) {
                 if (lang && lang.toLowerCase() === 'mermaid') {
-                    // Return a placeholder — will be rendered by mermaid.js in post-processing
                     const encoded = encodeURIComponent(str);
                     return `<div class="mermaid-block" data-mermaid-source="${encoded}"><div class="mermaid-svg-wrap"><p style="color:var(--fg-muted);font-size:.85rem">Rendering diagram&hellip;</p></div></div>`;
                 }
                 if (lang && window.hljs && window.hljs.getLanguage(lang)) {
                     try {
-                        return '<pre class="hljs"><code>' +
+                        return '<pre class="hljs" data-lang="' + md.utils.escapeHtml(lang) + '"><code>' +
                             window.hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
                             '</code></pre>';
                     } catch (_) { }
                 }
-                return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
+                const langAttr = lang ? ' data-lang="' + md.utils.escapeHtml(lang) + '"' : '';
+                return '<pre class="hljs"' + langAttr + '><code>' + md.utils.escapeHtml(str) + '</code></pre>';
             }
         });
 
@@ -558,7 +774,6 @@
         }
 
         // ── Mermaid rendering ─────────────────────────────────────────
-        // Keep last good SVGs per block ID
         const lastGoodSvg = {};
 
         async function renderMermaidBlock(block) {
@@ -568,7 +783,6 @@
             const wrap = block.querySelector('.mermaid-svg-wrap');
             if (!wrap) return;
 
-            // Load needed icon packs
             const packs = detectPacks(source);
             for (const p of packs) await ensurePack(p);
 
@@ -582,15 +796,13 @@
                 block.classList.remove('mermaid-errored');
                 lastGoodSvg[block.id] = svg;
 
-                // Remove any Mermaid error artifacts
-                block.querySelectorAll('.error,.error-icon,.error-text,.errorText,.messageText').forEach(n => n.remove());
+                block.querySelectorAll('.error,.error-icon,.error-text,.errorText').forEach(n => n.remove());
             } catch (e) {
                 block.classList.add('mermaid-errored');
                 const fallback = lastGoodSvg[block.id];
                 if (fallback) {
                     wrap.innerHTML = fallback;
                 }
-                // Show error chip
                 let errEl = block.querySelector('.mermaid-error');
                 if (!errEl) {
                     errEl = document.createElement('div');
@@ -601,8 +813,7 @@
                     .split('\n').find(Boolean) || 'Invalid diagram';
                 errEl.textContent = msg.replace(/\s*mermaid version\s*\d+(?:\.\d+)*\s*$/i, '').trim();
 
-                // Remove Mermaid error artifacts
-                block.querySelectorAll('.error,.error-icon,.error-text,.errorText,.messageText').forEach(n => n.remove());
+                block.querySelectorAll('.error,.error-icon,.error-text,.errorText').forEach(n => n.remove());
             }
         }
 
@@ -617,60 +828,74 @@
         async function fetchContent() {
             try {
                 const resp = await fetch('content.md?ts=' + Date.now(), { cache: 'no-store' });
-                if (!resp.ok) return null;
+                if (!resp.ok) {
+                    console.warn('[markdown-preview] content.md fetch failed:', resp.status);
+                    return null;
+                }
                 return (await resp.text()).replace(/\r\n?/g, '\n');
-            } catch { return null; }
+            } catch (e) {
+                console.warn('[markdown-preview] content.md fetch error:', e);
+                return null;
+            }
         }
 
         async function sync(initial = false) {
             const text = await fetchContent();
-            if (text == null) return;
+            if (text == null) {
+                if (initial) setStatus('Waiting for content...');
+                return;
+            }
             if (!initial && text === lastContent) return;
             lastContent = text;
 
-            // Render markdown → HTML
-            const html = md.render(text);
+            try {
+                const html = md.render(text);
 
-            // Use morphdom for efficient DOM diffing
-            const wrapper = document.createElement('div');
-            wrapper.id = 'content';
-            wrapper.innerHTML = html;
+                showContent();
 
-            morphdom(contentEl, wrapper, {
-                childrenOnly: false,
-                getNodeKey: function (node) {
-                    if (node.nodeType === 1) {
-                        if (node.getAttribute && node.getAttribute('data-graph') === 'mermaid') {
-                            return node.id;
-                        }
-                        return node.id || null;
-                    }
-                    return null;
-                },
-                onBeforeElUpdated: function (fromEl, toEl) {
-                    // If mermaid source hasn't changed, skip re-render
-                    if (fromEl.classList && fromEl.classList.contains('mermaid-rendered') &&
-                        fromEl.dataset.mermaidSource === toEl.dataset.mermaidSource) {
-                        return false; // keep existing DOM
-                    }
-                    // Preserve open details
-                    if (fromEl.tagName === 'DETAILS' && fromEl.hasAttribute('open')) {
-                        toEl.setAttribute('open', '');
-                    }
-                    return true;
-                },
-                onNodeAdded: function (node) {
-                    return node;
-                },
-            });
+                if (window.morphdom) {
+                    const wrapper = document.createElement('div');
+                    wrapper.id = 'content';
+                    wrapper.innerHTML = html;
 
-            // Post-process: render mermaid blocks that need rendering
-            const blocks = contentEl.querySelectorAll('.mermaid-block[data-mermaid-source]:not(.mermaid-rendered)');
-            for (const block of blocks) {
-                await renderMermaidBlock(block);
+                    window.morphdom(contentEl, wrapper, {
+                        childrenOnly: false,
+                        getNodeKey: function (node) {
+                            if (node.nodeType === 1) {
+                                if (node.getAttribute && node.getAttribute('data-graph') === 'mermaid') {
+                                    return node.id;
+                                }
+                                return node.id || null;
+                            }
+                            return null;
+                        },
+                        onBeforeElUpdated: function (fromEl, toEl) {
+                            if (fromEl.classList && fromEl.classList.contains('mermaid-rendered') &&
+                                fromEl.dataset.mermaidSource === toEl.dataset.mermaidSource) {
+                                return false;
+                            }
+                            if (fromEl.tagName === 'DETAILS' && fromEl.hasAttribute('open')) {
+                                toEl.setAttribute('open', '');
+                            }
+                            return true;
+                        },
+                    });
+                } else {
+                    contentEl.innerHTML = html;
+                }
+
+                const blocks = contentEl.querySelectorAll('.mermaid-block[data-mermaid-source]:not(.mermaid-rendered)');
+                for (const block of blocks) {
+                    await renderMermaidBlock(block);
+                }
+
+                setStatus('Updated ' + nowTime());
+            } catch (e) {
+                console.error('[markdown-preview] render error:', e);
+                contentEl.innerHTML = '<pre style="white-space:pre-wrap;padding:1rem">' +
+                    text.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</pre>';
+                setStatus('Render error: ' + e.message);
             }
-
-            setStatus('Updated ' + nowTime());
         }
 
         // ── SSE (Server-Sent Events from live-server.nvim) ────────────
@@ -681,9 +906,12 @@
             });
             evtSource.addEventListener('open', () => {
                 console.log('[markdown-preview] SSE connected');
+                sseConnected = true;
+                setConnectionState('connected');
             });
             evtSource.addEventListener('error', () => {
-                // EventSource auto-reconnects; nothing to do
+                sseConnected = false;
+                setConnectionState('error');
             });
             return evtSource;
         }
@@ -818,8 +1046,14 @@
 
         // ── Boot ──────────────────────────────────────────────────────
         (async function boot() {
-            applyTheme('dark');
-            await sync(true);
+            try {
+                applyTheme('dark');
+                await sync(true);
+            } catch (e) {
+                console.error('[markdown-preview] boot error:', e);
+                showContent();
+                contentEl.innerHTML = '<p style="color:var(--err-fg)">Error: ' + (e.message || e) + '</p>';
+            }
             connectSSE();
         })();
     </script>
