@@ -1,4 +1,4 @@
--- lua/mermaid_playground/util.lua
+-- lua/markdown_preview/util.lua
 local M = {}
 
 local sep = package.config:sub(1, 1)
@@ -59,7 +59,7 @@ function M.resolve_asset(rel)
 	if this:sub(1, 1) == "@" then
 		this = this:sub(2)
 	end
-	local root = this:match("(.-)" .. sep .. "lua" .. sep .. "mermaid_playground" .. sep .. "util%.lua$")
+	local root = this:match("(.-)" .. sep .. "lua" .. sep .. "markdown_preview" .. sep .. "util%.lua$")
 	if root then
 		local candidate = table.concat({ root, rel }, sep)
 		if M.file_exists(candidate) then
@@ -81,6 +81,15 @@ function M.open_in_browser(url)
 	if cmd then
 		vim.fn.jobstart(cmd, { detach = true })
 	end
+end
+
+---Generate a per-buffer workspace directory under Neovim's cache.
+---@param bufnr integer
+---@return string
+function M.workspace_for_buffer(bufnr)
+	local name = vim.api.nvim_buf_get_name(bufnr)
+	local hash = vim.fn.sha256(name):sub(1, 12)
+	return vim.fs.joinpath(vim.fn.stdpath("cache"), "markdown-preview", hash)
 end
 
 return M

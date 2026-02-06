@@ -1,213 +1,185 @@
-# mermaid-playground.nvim
+# markdown-preview.nvim
 
-Preview **Mermaid** diagrams from Markdown — _instantly_ — in your browser.
+> **Note:** This repository was previously known as `mermaid-playground.nvim`. It has been renamed and rewritten to support full Markdown preview alongside first-class Mermaid diagram support.
 
-- Uses the **fenced \` ```mermaid \`** block **under your cursor**
-- Writes the diagram to **`~/.config/mermaid-playground/diagram.mmd`** (global workspace)
-- Serves a minimal, beautiful **live preview** via [`live-server.nvim`](https://github.com/barrett-ruth/live-server.nvim)
-- **Auto-refreshes** on edit (debounced) and **reuses the same tab** (no tab spam)
-- Export SVG, zoom, fit-to-width/height, dark/light theme, nice error chip (no “boom” screens)
+Live **Markdown preview** for Neovim with first-class **Mermaid diagram** support.
+
+- Renders your entire `.md` file in the browser — headings, tables, code blocks, everything
+- **Mermaid diagrams** render inline as interactive SVGs (click to expand, zoom, pan, export)
+- **Instant updates** via Server-Sent Events (no polling)
+- **Syntax highlighting** for code blocks (highlight.js)
+- Dark / Light theme toggle
+- **Zero external dependencies** — no npm, no Node.js, just Neovim + your browser
+- Powered by [`live-server.nvim`](https://github.com/selimacerbas/live-server.nvim) (pure Lua HTTP server)
 
 ---
-## Demo
 
-![mermaid](docs/demo/mermaid.gif) 
+## Quick start
 
----
-
-## ✨ Quick start (30 seconds)
-
-1) **Prereqs**
-
-```bash
-# Node tool used by live-server.nvim
-npm i -g live-server
-```
-
-2) **Install (lazy.nvim)**
+### Install (lazy.nvim)
 
 ```lua
 {
-  "selimacerbas/mermaid-playground.nvim",
-  dependencies = { "barrett-ruth/live-server.nvim" },
+  "selimacerbas/markdown-preview.nvim",
+  dependencies = { "selimacerbas/live-server.nvim" },
   config = function()
-    require("mermaid_playground").setup({
+    require("markdown_preview").setup({
       -- all optional; sane defaults shown
-      workspace_dir = nil,                -- defaults to: $XDG_CONFIG_HOME/mermaid-playground
-      index_name    = "index.html",
-      diagram_name  = "diagram.mmd",
-      overwrite_index_on_start = false,   -- don't clobber your customized index.html
-      auto_refresh  = true,
-      auto_refresh_events = { "InsertLeave", "TextChanged", "TextChangedI", "BufWritePost" },
-      debounce_ms   = 450,
-      notify_on_refresh = false,
+      port = 8421,
+      open_browser = true,
+      debounce_ms = 300,
     })
   end,
 }
 ```
 
-(For **packer.nvim**, adapt as usual.)
+No prereqs. No `npm install`. Just install and go.
 
-3) **Use it**
+### Use it
 
-- Put your cursor **inside a fenced Mermaid block** in a Markdown file:
+Open any Markdown file, then:
 
-  ```markdown
-  ```mermaid
-  graph TD
-    A[Start] --> B{Is it good?}
-    B -->|Yes| C[Ship it]
-    B -->|No| D[Fix it]
-  ```
-  ```
+- **Start preview:** `<leader>mps` or `:MarkdownPreview`
+- **Edit freely** — the browser updates instantly as you type
+- **Force refresh:** `<leader>mpr`
+- **Stop:** `<leader>mpS`
 
-- Start preview: **`<leader>mps`**  
-- Edit as you like; leaving insert or writing the buffer will **auto-refresh**.  
-- Force re-render: **`<leader>mpr`**  
-- Stop server: **`<leader>mpS`**
+> The first start opens your browser. Subsequent updates reuse the same tab.
 
-> The first start opens your browser once. Subsequent refreshes **reuse the same tab**.
+For **non-markdown files**, place your cursor inside a fenced ```` ```mermaid ```` block — the plugin extracts and previews just that diagram.
 
 ---
 
-## ⌨️ Keymaps & Commands
+## Keymaps & Commands
 
-| Action     | Keymap         | Command                  |
-|------------|----------------|--------------------------|
-| Start      | `<leader>mps`  | `:MermaidPreviewStart`   |
-| Refresh    | `<leader>mpr`  | `:MermaidPreviewRefresh` |
-| Stop       | `<leader>mpS`  | `:MermaidPreviewStop`    |
+| Action  | Keymap        | Command                  |
+|---------|---------------|--------------------------|
+| Start   | `<leader>mps` | `:MarkdownPreview`       |
+| Refresh | `<leader>mpr` | `:MarkdownPreviewRefresh`|
+| Stop    | `<leader>mpS` | `:MarkdownPreviewStop`   |
 
-> Keymaps are defined under the `mp` group. Feel free to remap in your config.
+> Keymaps use the `<leader>mp` group. Remap freely in your config.
 
 ---
 
-## 🗂 Workspace & files
+## Browser UI
 
-- By default, files live in **`~/.config/mermaid-playground/`** (or `$XDG_CONFIG_HOME/mermaid-playground`):
-  - `index.html` – the preview UI (copied from the plugin on first run)
-  - `diagram.mmd` – the currently previewed diagram (rewritten on refresh)
+The preview opens a polished browser app with:
 
-Want a project-local workspace instead? In `setup()`:
+- **Full Markdown rendering** — GitHub-flavored styling for headings, lists, tables, blockquotes, code, images, links, horizontal rules
+- **Syntax-highlighted code blocks** — powered by highlight.js
+- **Interactive Mermaid diagrams** — rendered inline as SVGs:
+  - Hover a diagram to reveal the **expand button**
+  - Click to open a **fullscreen overlay** with zoom, pan, fit-to-width/height, and SVG export
+- **Dark / Light theme** toggle in the header
+- **Per-diagram error handling** — if one mermaid block is invalid, only that block shows an error; the rest of the page renders fine
+- **Iconify auto-detection** — icon packs like `logos:google-cloud` are loaded on demand
+
+---
+
+## Configuration
 
 ```lua
-require("mermaid_playground").setup({
-  workspace_dir = ".mermaid-live",       -- use a folder in the repo
-  overwrite_index_on_start = true,        -- keep the html in sync with plugin
-})
-```
+require("markdown_preview").setup({
+  port = 8421,                          -- server port
+  open_browser = true,                  -- auto-open browser on start
 
----
+  content_name = "content.md",          -- workspace content file
+  index_name = "index.html",            -- workspace HTML file
+  workspace_dir = nil,                  -- nil = per-buffer (recommended); set a path to override
 
-## 🧭 Browser UI
+  overwrite_index_on_start = false,     -- copy plugin's index.html on every start if true
 
-- **Zoom** `- / 100% / +`
-- **Fit width / Fit height**
-- **Reload** (force refetch of `diagram.mmd`)
-- **Export SVG**
-- **Theme** toggle (Dark/Light)
-
-**Error handling:** If your diagram is temporarily invalid, the last good render remains visible and a small chip appears in the corner (no giant “boom” error). It clears on the next valid render.
-
-**Icon packs:** The preview auto-detects [Iconify](https://iconify.design/) packs referenced in your diagram (e.g. `logos:google-cloud`). They are loaded on demand.
-
----
-
-## ⚙️ Configuration reference
-
-```lua
-require("mermaid_playground").setup({
-  workspace_dir = nil,                    -- default: $XDG_CONFIG_HOME/mermaid-playground
-  index_name    = "index.html",
-  diagram_name  = "diagram.mmd",
-  overwrite_index_on_start = false,       -- copy plugin's assets/index.html on every start if true
-
-  auto_refresh  = true,                   -- enable buffer-local auto update
-  auto_refresh_events = {                 -- which events trigger refresh (debounced)
+  auto_refresh = true,                  -- auto-update on buffer changes
+  auto_refresh_events = {               -- which events trigger refresh
     "InsertLeave", "TextChanged", "TextChangedI", "BufWritePost"
   },
-  debounce_ms   = 450,                    -- debounce for auto_refresh events
-  notify_on_refresh = false,              -- small :notify on refresh
+  debounce_ms = 300,                    -- debounce interval
+  notify_on_refresh = false,            -- show notification on refresh
 })
 ```
 
-> Uses Tree-sitter to locate the fenced block under the cursor (with a regex fallback). Any fenced block labelled `mermaid` is supported.
-
 ---
 
-## 🧩 Dependencies
-
-- **Neovim** 0.9+ recommended
-- **[live-server.nvim](https://github.com/barrett-ruth/live-server.nvim)** and **`live-server`** (npm global)
-- **Tree-sitter** with the **Markdown** parser installed (for best results)
-
-`live-server.nvim` defaults to port **5555**. If something else uses that port:
-
-```lua
-require("live-server").setup({
-  args = { "--port=7777" },
-})
-```
-
-The preview HTML doesn’t hardcode a URL; it works with whatever port `live-server.nvim` chooses.
-
----
-
-## 🛠 Troubleshooting
-
-**Browser shows “Cannot GET /index.html”.**  
-Make sure the server is started **in the same directory** as the workspace. This plugin does that automatically; if you customized `workspace_dir`, double-check the path exists and is writable.
-
-**No diagram updates.**  
-- Ensure your cursor was inside a ` ```mermaid ` block when you started.
-- Check `auto_refresh_events` and `debounce_ms`. Try a manual refresh with `<leader>mpr`.
-
-**Still seeing “boom” error graphics** under the preview.  
-Replace your `index.html` with the one shipped in the plugin (`assets/index.html`) or set `overwrite_index_on_start = true` once to copy the latest.
-
-**Port already in use / multiple servers.**  
-Use `<leader>mpS` to stop, change the port in `live-server.nvim`, then `<leader>mps` again.
-
-**Windows paths.**  
-The global workspace resolves via `vim.loop.os_homedir()`; if you prefer a custom directory, set `workspace_dir` explicitly.
-
----
-
-## 🧪 Example diagram with Iconify
-
-```mermaid
-architecture-beta
-group vpc(cloud)[gcp]
-group subnet(subnet)[subnet] in vpc
-
-service db(database)[mariadb] in subnet
-
-%% Iconify packs are auto-detected: logos:google-cloud
-service cool(logos:google-cloud)[cool]
-```
-
----
-
-## 📦 Project structure (plugin)
+## How it works
 
 ```
-mermaid-playground.nvim/
-├─ plugin/mermaid-playground.lua         -- commands + keymaps (mps/mpr/mpS)
-├─ lua/mermaid_playground/
-│  ├─ init.lua                           -- main logic (workspace, refresh, server)
-│  ├─ util.lua                           -- tiny fs helpers
-│  └─ ts.lua                             -- Tree-sitter extractor + fallback
+Neovim buffer
+    |
+    |  (autocmd: debounced write)
+    v
+workspace/content.md
+    |
+    |  (live-server.nvim detects change)
+    v
+SSE event --> Browser
+    |
+    |  markdown-it --> HTML
+    |  mermaid.js  --> inline SVG diagrams
+    |  highlight.js --> syntax highlighting
+    |  morphdom    --> efficient DOM diffing
+    v
+Rendered preview (scroll preserved, no flicker)
+```
+
+- **Markdown files**: The entire buffer is written to `content.md`
+- **Non-markdown files**: The mermaid block under the cursor is extracted (via Tree-sitter or regex fallback) and wrapped in a code fence
+- **SSE** (Server-Sent Events) from `live-server.nvim` push updates instantly — no polling
+- **morphdom** diffs the DOM efficiently, preserving scroll position and interactive state
+- **Per-buffer workspaces** under `~/.cache/nvim/markdown-preview/<hash>/` prevent collisions between Neovim instances
+
+---
+
+## Dependencies
+
+- **Neovim** 0.9+
+- **[live-server.nvim](https://github.com/selimacerbas/live-server.nvim)** — pure Lua HTTP server (no npm)
+- **Tree-sitter** with the **Markdown** parser (recommended for mermaid block extraction)
+
+Browser-side libraries are loaded from CDN (cached by your browser):
+- [markdown-it](https://github.com/markdown-it/markdown-it) — Markdown parser
+- [Mermaid](https://mermaid.js.org/) — diagram engine
+- [highlight.js](https://highlightjs.org/) — syntax highlighting
+- [morphdom](https://github.com/patrick-steele-idem/morphdom) — DOM diffing
+
+---
+
+## Troubleshooting
+
+**Browser shows nothing or "Loading..."**
+- Make sure `live-server.nvim` is installed and loadable: `:lua require("live_server")`
+- Check the port isn't in use: change `port` in config
+
+**Mermaid diagram not rendering**
+- The diagram syntax must be valid Mermaid — check the error chip on the diagram block
+- Invalid diagrams show the last good render + error message
+
+**Port conflict**
+- Stop with `<leader>mpS`, change `port` in config, restart with `<leader>mps`
+
+---
+
+## Project structure
+
+```
+markdown-preview.nvim/
+├─ plugin/markdown-preview.lua       -- commands + keymaps
+├─ lua/markdown_preview/
+│  ├─ init.lua                       -- main logic (server, refresh, workspace)
+│  ├─ util.lua                       -- fs helpers, workspace resolution
+│  └─ ts.lua                         -- Tree-sitter mermaid extractor + fallback
 └─ assets/
-   └─ index.html                         -- minimal preview app (served by live-server)
+   └─ index.html                     -- browser preview app
 ```
 
 ---
 
-## 🙌 Thanks
+## Thanks
 
-- [Mermaid](https://mermaid.js.org/) for the diagram engine  
-- [Iconify](https://iconify.design/) packs for easy service logos  
-- [live-server.nvim](https://github.com/barrett-ruth/live-server.nvim) for the lightweight dev server
+- [Mermaid](https://mermaid.js.org/) for the diagram engine
+- [Iconify](https://iconify.design/) for icon packs
+- [markdown-it](https://github.com/markdown-it/markdown-it) for Markdown parsing
+- [highlight.js](https://highlightjs.org/) for syntax highlighting
+- [morphdom](https://github.com/patrick-steele-idem/morphdom) for efficient DOM updates
 
 PRs and ideas welcome!
-
