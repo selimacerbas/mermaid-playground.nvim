@@ -46,7 +46,9 @@ Open any Markdown file, then:
 
 > The first start opens your browser. Subsequent updates reuse the same tab.
 
-For **non-markdown files**, place your cursor inside a fenced ```` ```mermaid ```` block — the plugin extracts and previews just that diagram.
+**`.mmd` / `.mermaid` files** are fully supported — the entire file is rendered as a diagram.
+
+For **other non-markdown files**, place your cursor inside a fenced ```` ```mermaid ```` block — the plugin extracts and previews just that diagram.
 
 ---
 
@@ -67,11 +69,12 @@ For **non-markdown files**, place your cursor inside a fenced ```` ```mermaid ``
 The preview opens a polished browser app with:
 
 - **Full Markdown rendering** — GitHub-flavored styling for headings, lists, tables, blockquotes, code, images, links, horizontal rules
-- **Syntax-highlighted code blocks** — powered by highlight.js
+- **Syntax-highlighted code blocks** — powered by highlight.js, with language badges
 - **Interactive Mermaid diagrams** — rendered inline as SVGs:
   - Hover a diagram to reveal the **expand button**
   - Click to open a **fullscreen overlay** with zoom, pan, fit-to-width/height, and SVG export
-- **Dark / Light theme** toggle in the header
+- **Dark / Light theme** toggle (sun/moon icon in header)
+- **Live connection indicator** — green dot when SSE is connected
 - **Per-diagram error handling** — if one mermaid block is invalid, only that block shows an error; the rest of the page renders fine
 - **Iconify auto-detection** — icon packs like `logos:google-cloud` are loaded on demand
 
@@ -140,7 +143,8 @@ Rendered preview (scroll preserved, no flicker)
 ```
 
 - **Markdown files**: The entire buffer is written to `content.md`
-- **Non-markdown files**: The mermaid block under the cursor is extracted (via Tree-sitter or regex fallback) and wrapped in a code fence
+- **Mermaid files** (`.mmd`, `.mermaid`): The entire buffer is wrapped in a mermaid code fence
+- **Other files**: The mermaid block under the cursor is extracted (via Tree-sitter or regex fallback) and wrapped in a code fence
 - **SSE** (Server-Sent Events) from `live-server.nvim` push updates instantly — no polling
 - **morphdom** diffs the DOM efficiently, preserving scroll position and interactive state
 - **Per-buffer workspaces** under `~/.cache/nvim/markdown-preview/<hash>/` prevent collisions between Neovim instances
