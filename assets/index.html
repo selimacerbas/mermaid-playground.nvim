@@ -34,6 +34,12 @@
             --badge-fg: #8b949e;
             --skeleton: rgba(255, 255, 255, .04);
             --skeleton-shine: rgba(255, 255, 255, .08);
+            /* GitHub callout colors (dark) */
+            --color-note: #2f81f7;
+            --color-tip: #3fb950;
+            --color-warning: #d29922;
+            --color-caution: #f85149;
+            --color-important: #a371f7;
         }
 
         [data-theme="light"] {
@@ -58,6 +64,12 @@
             --badge-fg: #656d76;
             --skeleton: rgba(0, 0, 0, .04);
             --skeleton-shine: rgba(0, 0, 0, .07);
+            /* GitHub callout colors (light) */
+            --color-note: #0969da;
+            --color-tip: #1a7f37;
+            --color-warning: #9a6700;
+            --color-caution: #d1242f;
+            --color-important: #8250df;
         }
 
         /* ── Reset & base ──────────────────────────────────────────────── */
@@ -269,6 +281,15 @@
         }
 
         /* Headings */
+        #content h1,
+        #content h2,
+        #content h3,
+        #content h4,
+        #content h5,
+        #content h6 {
+            position: relative;
+        }
+
         #content h1 {
             font-size: 2em;
             border-bottom: 1px solid var(--stroke);
@@ -298,6 +319,31 @@
             font-size: .875em;
             color: var(--fg-muted);
             margin: 1em 0 .4em;
+        }
+
+        /* Heading anchor links */
+        #content .header-anchor {
+            color: var(--fg-muted);
+            text-decoration: none;
+            opacity: 0;
+            transition: opacity .15s;
+            margin-right: .3em;
+            font-weight: 400;
+        }
+
+        #content h1:hover .header-anchor,
+        #content h2:hover .header-anchor,
+        #content h3:hover .header-anchor,
+        #content h4:hover .header-anchor,
+        #content h5:hover .header-anchor,
+        #content h6:hover .header-anchor {
+            opacity: .6;
+        }
+
+        #content .header-anchor:hover {
+            opacity: 1 !important;
+            color: var(--link);
+            text-decoration: none;
         }
 
         /* Paragraphs & text */
@@ -433,6 +479,144 @@
             letter-spacing: .5px;
             font-weight: 500;
             line-height: 1.4;
+        }
+
+        /* ── Copy button on code blocks ──────────────────────────────── */
+        #content pre .copy-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--panel);
+            border: 1px solid var(--stroke);
+            border-radius: 6px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity .15s, background .15s;
+            color: var(--fg-muted);
+            padding: 0;
+            z-index: 2;
+        }
+
+        #content pre:hover .copy-btn {
+            opacity: 1;
+        }
+
+        #content pre .copy-btn:hover {
+            color: var(--fg);
+            background: rgba(127, 127, 127, .15);
+        }
+
+        #content pre .copy-btn.copied {
+            color: #3fb950;
+        }
+
+        /* Shift badge down when copy button is present */
+        #content pre[data-lang] .copy-btn {
+            top: 26px;
+        }
+
+        /* ── GitHub callouts / admonitions ────────────────────────────── */
+        #content .markdown-alert {
+            padding: .5rem 1em;
+            margin-bottom: 16px;
+            color: inherit;
+            border-left: .25em solid #888;
+            border-radius: 0 6px 6px 0;
+            background: var(--badge-bg);
+        }
+
+        #content .markdown-alert>:first-child {
+            margin-top: 0;
+        }
+
+        #content .markdown-alert>:last-child {
+            margin-bottom: 0;
+        }
+
+        #content .markdown-alert .markdown-alert-title {
+            display: flex;
+            font-weight: 500;
+            align-items: center;
+            line-height: 1;
+            margin-bottom: .5em;
+        }
+
+        #content .markdown-alert .markdown-alert-title .octicon {
+            margin-right: .5rem;
+            display: inline-block;
+            overflow: visible !important;
+            vertical-align: text-bottom;
+            fill: currentColor;
+        }
+
+        #content .markdown-alert.markdown-alert-note {
+            border-left-color: var(--color-note);
+        }
+
+        #content .markdown-alert.markdown-alert-note .markdown-alert-title {
+            color: var(--color-note);
+        }
+
+        #content .markdown-alert.markdown-alert-tip {
+            border-left-color: var(--color-tip);
+        }
+
+        #content .markdown-alert.markdown-alert-tip .markdown-alert-title {
+            color: var(--color-tip);
+        }
+
+        #content .markdown-alert.markdown-alert-warning {
+            border-left-color: var(--color-warning);
+        }
+
+        #content .markdown-alert.markdown-alert-warning .markdown-alert-title {
+            color: var(--color-warning);
+        }
+
+        #content .markdown-alert.markdown-alert-important {
+            border-left-color: var(--color-important);
+        }
+
+        #content .markdown-alert.markdown-alert-important .markdown-alert-title {
+            color: var(--color-important);
+        }
+
+        #content .markdown-alert.markdown-alert-caution {
+            border-left-color: var(--color-caution);
+        }
+
+        #content .markdown-alert.markdown-alert-caution .markdown-alert-title {
+            color: var(--color-caution);
+        }
+
+        /* ── Footnotes ───────────────────────────────────────────────── */
+        #content .footnotes-sep {
+            margin-top: 2em;
+        }
+
+        #content .footnotes {
+            font-size: .88em;
+            color: var(--fg-muted);
+        }
+
+        #content .footnotes ol {
+            padding-left: 1.5em;
+        }
+
+        #content .footnote-ref a {
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        #content .footnote-backref {
+            text-decoration: none;
+            font-size: .8em;
+            margin-left: .3em;
         }
 
         /* ── Mermaid diagrams ──────────────────────────────────────────── */
@@ -627,13 +811,17 @@
         <div id="overlay-panzoom"></div>
     </div>
 
-    <!-- CDN deps: markdown-it, morphdom, highlight.js (browser build) -->
+    <!-- CDN deps: markdown-it, morphdom, highlight.js, emoji, footnote, anchor -->
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/morphdom@2/dist/morphdom-umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-emoji@3.0.0/dist/markdown-it-emoji.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+    <script src="https://unpkg.com/markdown-it-anchor@9.2.0/dist/markdownItAnchor.umd.js"></script>
 
     <script type="module">
         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        import markdownItGithubAlerts from 'https://unpkg.com/markdown-it-github-alerts@1.0.1/dist/index.mjs';
 
         // ── DOM refs ──────────────────────────────────────────────────
         const $ = (id) => document.getElementById(id);
@@ -657,6 +845,10 @@
         // SVG paths for theme icons
         const MOON_SVG = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
         const SUN_SVG = '<circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>';
+
+        // SVG icons for copy button
+        const COPY_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="2"/></svg>';
+        const CHECK_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
         // ── State ─────────────────────────────────────────────────────
         let lastContent = null;
@@ -735,6 +927,22 @@
                 return '<pre class="hljs"' + langAttr + '><code>' + md.utils.escapeHtml(str) + '</code></pre>';
             }
         });
+
+        // Register plugins
+        md.use(markdownItGithubAlerts);
+        if (window.markdownitEmoji) md.use(window.markdownitEmoji);
+        if (window.markdownitFootnote) md.use(window.markdownitFootnote);
+        if (window.markdownItAnchor) {
+            md.use(window.markdownItAnchor, {
+                permalink: window.markdownItAnchor.permalink.linkInsideHeader({
+                    symbol: '#',
+                    placement: 'before',
+                    class: 'header-anchor',
+                    ariaHidden: true,
+                }),
+                slugify: (s) => s.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, ''),
+            });
+        }
 
         // Override fence renderer to handle mermaid specially
         const defaultFence = md.renderer.rules.fence;
@@ -824,6 +1032,32 @@
             }
         }
 
+        // ── Copy button on code blocks ────────────────────────────────
+        function attachCopyButtons() {
+            contentEl.querySelectorAll('pre.hljs').forEach(pre => {
+                if (pre.querySelector('.copy-btn')) return;
+                const btn = document.createElement('button');
+                btn.className = 'copy-btn';
+                btn.title = 'Copy code';
+                btn.innerHTML = COPY_ICON;
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const code = pre.querySelector('code');
+                    if (!code) return;
+                    try {
+                        await navigator.clipboard.writeText(code.textContent);
+                        btn.innerHTML = CHECK_ICON;
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            btn.innerHTML = COPY_ICON;
+                            btn.classList.remove('copied');
+                        }, 1500);
+                    } catch (_) { }
+                });
+                pre.appendChild(btn);
+            });
+        }
+
         // ── Content sync ──────────────────────────────────────────────
         async function fetchContent() {
             try {
@@ -888,6 +1122,8 @@
                 for (const block of blocks) {
                     await renderMermaidBlock(block);
                 }
+
+                attachCopyButtons();
 
                 setStatus('Updated ' + nowTime());
             } catch (e) {
